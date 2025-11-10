@@ -5,6 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+/*include des semaphore et tube peuvent aller dans "master_client.h" ? (loic)
+le fichier master_client.h est partagé par le master et le client,
+donc les deux auront l'include necessaire aux semaphore / tubes
+*/
 
 #include "myassert.h"
 
