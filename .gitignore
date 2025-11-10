@@ -1,0 +1,7 @@
+*
+!.gitignore
+!PROJET/
+!PROJET/src/
+!*.c
+!Makefile
+!*.sh
