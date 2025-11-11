@@ -87,6 +87,9 @@ int main(int argc, char * argv[])
     int order = parseArgs(argc, argv, &number);
     printf("%d\n", order); // pour éviter le warning
 
+    key_t key = ftok(FILENAME, MASTER_CLIENT);
+    int sem_master_state = semget(key, 1, 0);
+
     // order peut valoir 5 valeurs (cf. master_client.h) :
     //      - ORDER_COMPUTE_PRIME_LOCAL
     //      - ORDER_STOP
@@ -114,6 +117,6 @@ int main(int argc, char * argv[])
     //
     // N'hésitez pas à faire des fonctions annexes ; si la fonction main
     // ne dépassait pas une trentaine de lignes, ce serait bien.
-    
+
     return EXIT_SUCCESS;
 }

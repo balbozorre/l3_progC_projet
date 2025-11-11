@@ -77,10 +77,19 @@ void loop(/* paramètres */)
 
 int main(int argc, char * argv[])
 {
-    if (argc != 1)
+    if (argc != 1) {
         usage(argv[0], NULL);
+    }
+
+    //valeur de retour des fonctions ipc
+    int ret;
 
     // - création des sémaphores
+        //un semaphore pour les clients (loic)
+    key_t key = ftok(FILENAME, MASTER_CLIENT);
+    int sem_master_state = semget(key, 1, IPC_CREAT|IPC_EXCL|0644);
+    ret = semctl(sem_master_state, 0, SETVAL, 1);
+        //un pour les dialogues worker-master (loic)
     // - création des tubes nommés
     // - création du premier worker
 
@@ -88,6 +97,7 @@ int main(int argc, char * argv[])
     loop(/* paramètres */);
 
     // destruction des tubes nommés, des sémaphores, ...
+    ret = semctl(sem_master_state, -1, IPC_RMID);
 
     return EXIT_SUCCESS;
 }

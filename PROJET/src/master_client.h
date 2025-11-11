@@ -6,13 +6,14 @@
 //    - des fonctions communes (création tubes, écriture dans un tube,
 //      manipulation de sémaphores, ...)
 
-/*  Includes partagés entre le master et le client
-    comme les semaphore et tubes
+/*  (loic) Includes partagés entre le master et le client
+    comme les semaphore et tubes*/
 #include <sys/sem.h>
 #include <sys/types.h>
-*/
 
-//valeurs necessaire à ftok ()
+// (loic) valeurs necessaire à ftok()
+#define FILENAME "0README"
+#define MASTER_CLIENT 27
 
 // ordres possibles pour le master
 #define ORDER_NONE                0
