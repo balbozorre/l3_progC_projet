@@ -85,7 +85,7 @@ int main(int argc, char * argv[])
     int ret;
 
     // - création des sémaphores
-        //un semaphore pour les clients (loic)
+    // semaphore indiquant si le master peut prendre des ordres des clients (loic)
     key_t key = ftok(FILENAME, MASTER_CLIENT);
     int sem_master_state = semget(key, 1, IPC_CREAT|IPC_EXCL|0644);
     ret = semctl(sem_master_state, 0, SETVAL, 1);
