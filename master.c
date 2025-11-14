@@ -68,6 +68,7 @@ void loop(/* paramètres */)
     //
     // il est important d'ouvrir et fermer les tubes nommés à chaque itération
     // voyez-vous pourquoi ?
+    
 }
 
 
@@ -83,6 +84,8 @@ int main(int argc, char * argv[])
 
     //valeur de retour des fonctions ipc
     int ret;
+    //tube nommé entre master et client
+    int mc_fd, cm_fd;
 
     // - création des sémaphores
     // semaphore indiquant si le master peut prendre des ordres des clients (loic)
@@ -90,7 +93,11 @@ int main(int argc, char * argv[])
     int sem_master_state = semget(key, 1, IPC_CREAT|IPC_EXCL|0644);
     ret = semctl(sem_master_state, 0, SETVAL, 1);
         //un pour les dialogues worker-master (loic)
-    // - création des tubes nommés
+    // - création des tubes nommés master <-> client
+    ret = mkfifo(TUBE_MC, 0644);
+    mc_fd = open(TUBE_MC, O_WRONLY);
+    ret = mkfifo(TUBE_CM, 0644);
+    cm_fd = open(TUBE_CM, O_RDONLY);
     // - création du premier worker
 
     // boucle infinie
@@ -98,6 +105,8 @@ int main(int argc, char * argv[])
 
     // destruction des tubes nommés, des sémaphores, ...
     ret = semctl(sem_master_state, -1, IPC_RMID);
+    ret = unlink(TUBE_MC);
+    ret = unlink(TUBE_CM);
 
     return EXIT_SUCCESS;
 }

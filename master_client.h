@@ -11,9 +11,17 @@
 #include <sys/sem.h>
 #include <sys/types.h>
 
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 // (loic) valeurs necessaire à ftok()
 #define FILENAME "0README"
 #define MASTER_CLIENT 27
+
+//valeurs pour les tubes
+#define TUBE_MC "master_client"
+#define TUBE_CM "client_master"
 
 // ordres possibles pour le master
 #define ORDER_NONE                0

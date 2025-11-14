@@ -1,9 +1,6 @@
 *
 !.gitignore
-!PROJET/
-!PROJET/src/
 !*.c
 !Makefile
 !*.sh
 !*.h
-fonctions_utiles.c
