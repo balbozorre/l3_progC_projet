@@ -22,6 +22,12 @@ donc les deux auront l'include necessaire aux semaphore / tubes
 // on peut ici définir une structure stockant tout ce dont le master
 // a besoin
 
+// Idée :
+//  Structure de données de type :
+//        Count;
+//        Highest;
+//        ListOfPrime;
+
 
 /************************************************************************
  * Usage et analyse des arguments passés en ligne de commande
@@ -39,7 +45,7 @@ static void usage(const char *exeName, const char *message)
 /************************************************************************
  * boucle principale de communication avec le client
  ************************************************************************/
-void loop(/* paramètres */)
+void loop(int mc_fd, int cm_fd)
 {
     // boucle infinie :
     // - ouverture des tubes (cf. rq client.c)
@@ -69,6 +75,79 @@ void loop(/* paramètres */)
     // il est important d'ouvrir et fermer les tubes nommés à chaque itération
     // voyez-vous pourquoi ?
     
+    int ret;
+
+    int order;
+
+    // Ouverture des tubes entre Master et Client
+    mc_fd = open(TUBE_MC, O_WRONLY);
+    myassert(mc_fd != -1, "ouverture du tube master -> client en écriture a échoué");
+    printf("ouverture master -> client ecriture ok\n");
+
+    cm_fd = open(TUBE_CM, O_RDONLY);
+    myassert(cm_fd != -1, "ouverture du tube client -> master en lecture a échoué");
+    printf("ouverture client -> master lecture ok\n");
+
+    // Lecture de l'ordre envoyé par Client
+    ret = read(cm_fd, &order, sizeof(int));
+    myassert(ret == sizeof(int), "lecture de l'ordre dans le tube client -> master a échoué");
+
+
+    if (order == ORDER_STOP) {
+        int ack = 1; // équivalent a true
+
+        // TODO : envoyer ordre de fin au premier worker et attendre sa fin
+        // envoyer un accusé de réception au client
+
+        // Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
+        ret = write(mc_fd, &ack, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de l'accusé de reception d'arrêt du master dans le tube master -> client a échoué");
+    }
+    else if (order == ORDER_COMPUTE_PRIME) {
+        int number, isprime;
+
+        ret = read(cm_fd, &number, sizeof(int));
+        myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
+        
+        // TODO : pipeline workers
+
+        /*
+        ret = read(wm_fd, &isprime, sizeof(int));  // Reponse du worker
+        myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
+        */
+       // Remplacement de la réponse du worker
+        isprime = 1;  // Valeur arbitraire tant les workers n'ont pas été fait
+
+        ret = write(mc_fd, &isprime, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
+        printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+    }
+    else if (order == ORDER_HOW_MANY_PRIME) {
+        int count = 13;  // Valeur arbitraire tant les workers n'ont pas été fait
+
+        ret = write(mc_fd, &count, sizeof(int));
+        myassert(ret == sizeof(int), "écriture du nombre de nombre premier connu dans le tube master -> client a échoué");
+    }
+    else if (order == ORDER_HIGHEST_PRIME) {
+        int highest = 1637;  // Valeur arbitraire tant les workers n'ont pas été fait
+                
+        ret = write(mc_fd, &highest, sizeof(int));
+        myassert(ret == sizeof(int), "écriture du plus grand nombre premier connu dans le tube master -> client a échoué");
+    }
+
+
+    // destruction des tubes nommés, des sémaphores, ...
+    ret = close(mc_fd);
+    myassert(ret == 0, "fermeture du tube master -> client a échoué");
+    ret = close(cm_fd);
+    myassert(ret == 0, "fermeture du tube client -> master a échoué");
+
+
+    // TODO :
+    // - attendre ordre du client avant de continuer (sémaphore : précédence)
+    // - revenir en début de boucle
+
+    
 }
 
 
@@ -83,30 +162,38 @@ int main(int argc, char * argv[])
     }
 
     //valeur de retour des fonctions ipc
-    int ret;
+    //int ret;
     //tube nommé entre master et client
     int mc_fd, cm_fd;
 
     // - création des sémaphores
     // semaphore indiquant si le master peut prendre des ordres des clients (loic)
+
+    /*
     key_t key = ftok(FILENAME, MASTER_CLIENT);
     int sem_master_state = semget(key, 1, IPC_CREAT|IPC_EXCL|0644);
     ret = semctl(sem_master_state, 0, SETVAL, 1);
+    */
+
         //un pour les dialogues worker-master (loic)
     // - création des tubes nommés master <-> client
-    ret = mkfifo(TUBE_MC, 0644);
-    mc_fd = open(TUBE_MC, O_WRONLY);
+    int ret = mkfifo(TUBE_MC, 0644);
+    myassert(ret == 0, "création du tube master -> client a échoué");
     ret = mkfifo(TUBE_CM, 0644);
-    cm_fd = open(TUBE_CM, O_RDONLY);
+    myassert(ret == 0, "création du tube client -> master a échoué");
+
     // - création du premier worker
 
     // boucle infinie
-    loop(/* paramètres */);
+    loop(mc_fd, cm_fd);
 
-    // destruction des tubes nommés, des sémaphores, ...
-    ret = semctl(sem_master_state, -1, IPC_RMID);
+
+    //ret = semctl(sem_master_state, -1, IPC_RMID);
     ret = unlink(TUBE_MC);
+    myassert(ret == 0, "suppression du tube master -> client a échoué");
     ret = unlink(TUBE_CM);
+    myassert(ret == 0, "suppression du tube client -> master a échoué");
+
 
     return EXIT_SUCCESS;
 }

@@ -87,8 +87,10 @@ int main(int argc, char * argv[])
     int order = parseArgs(argc, argv, &number);
     printf("%d\n", order); // pour éviter le warning
 
+    /*
     key_t key = ftok(FILENAME, MASTER_CLIENT);
     int sem_master_state = semget(key, 1, 0);
+    */
 
     // order peut valoir 5 valeurs (cf. master_client.h) :
     //      - ORDER_COMPUTE_PRIME_LOCAL
@@ -117,6 +119,86 @@ int main(int argc, char * argv[])
     //
     // N'hésitez pas à faire des fonctions annexes ; si la fonction main
     // ne dépassait pas une trentaine de lignes, ce serait bien.
+
+
+    if (order == ORDER_COMPUTE_PRIME_LOCAL) {
+        // TODO : 3.3 client (bis) -> code pour calculer les nombres premiers en local
+
+        printf("Actuellement indisponible.\n");
+
+    } else {
+        // code pour communiquer avec le master
+
+        // TODO : section critique avec sémaphore
+
+
+        //valeur de retour des fonctions ipc
+        int ret;
+        //tube nommé entre master et client
+        int mc_fd, cm_fd;
+
+        mc_fd = open(TUBE_MC, O_RDONLY);
+        myassert(mc_fd != -1, "ouverture du tube master -> client en lecture a échoué");
+        printf("ouverture master -> client lecture ok\n");
+
+        cm_fd = open(TUBE_CM, O_WRONLY);
+        myassert(cm_fd != -1, "ouverture du tube client -> master en écriture a échoué");
+        printf("ouverture client -> master ecriture ok\n");
+
+        // Communication entre Client et Master (Matteo)
+        if (order == ORDER_STOP) {
+            int ack;
+            ret = write(cm_fd, &order, sizeof(int));
+            myassert(ret == sizeof(int), "écriture de l'ordre \"stop\" dans le tube client -> master a échoué");
+
+            ret = read(mc_fd, &ack, sizeof(int));
+            myassert(ret == sizeof(int), "lecture de l'accusé de reception d'arret du master dans le tube master -> client a échoué");
+            printf("Le master a bien reçu l'ordre d'arrêt et a bien supprimé tout les worker\n");
+        }
+        else if (order == ORDER_COMPUTE_PRIME) {
+            int isprime;
+            ret = write(cm_fd, &order, sizeof(int));
+            myassert(ret == sizeof(int), "écriture de l'ordre \"demande si un nombre est premier\" dans le tube client -> master a échoué");
+            ret = write(cm_fd, &number, sizeof(int));
+            myassert(ret == sizeof(int), "écriture du nombre a calculer dans le tube client -> master a échoué");
+            
+            ret = read(mc_fd, &isprime, sizeof(int));
+            myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube master -> client a échoué");
+            printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+        }
+        else if (order == ORDER_HOW_MANY_PRIME) {
+            int count;
+            ret = write(cm_fd, &order, sizeof(int));
+            myassert(ret == sizeof(int), "écriture de l'ordre \"combien de nombres premiers calculés\" dans le tube client -> master a échoué");
+            
+            ret = read(mc_fd, &count, sizeof(int));
+            myassert(ret == sizeof(int), "lecture du nombre de nombre premier connu dans le tube master -> client a échoué");
+            printf("Le master a calculé %d nombres premiers\n", count);
+        }
+        else if (order == ORDER_HIGHEST_PRIME) {
+            int highest;
+            ret = write(cm_fd, &order, sizeof(int));
+            myassert(ret == sizeof(int), "écriture de l'ordre \"quel est le plus grand nombre premier calculé\" dans le tube client -> master a échoué");
+            
+            ret = read(mc_fd, &highest, sizeof(int));
+            myassert(ret == sizeof(int), "lecture du plus grand nombre premier connu dans le tube master -> client a échoué");
+            printf("Le plus grand nombre premier calculé par le master est %d\n", highest);
+        }
+
+        // TODO : sortir de la section critique
+
+
+        // destruction des tubes nommés
+        ret = close(mc_fd);
+        myassert(ret == 0, "fermeture du tube master -> client a échoué");
+        ret = close(cm_fd);
+        myassert(ret == 0, "fermeture du tube client -> master a échoué");
+
+
+        // TODO : libérer le master gràce au deuxième sémaphore
+
+    }
+
 
     return EXIT_SUCCESS;
 }
