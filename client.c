@@ -136,10 +136,8 @@ int main(int argc, char * argv[])
     int order = parseArgs(argc, argv, &number);
     printf("%d\n", order); // pour éviter le warning
 
-    /*
     key_t key = ftok(FILENAME, MASTER_CLIENT);
-    int sem_master_state = semget(key, 1, 0);
-    */
+    int sem_mc_states = semget(key, 2, 0);
 
     // order peut valoir 5 valeurs (cf. master_client.h) :
     //      - ORDER_COMPUTE_PRIME_LOCAL
@@ -169,7 +167,6 @@ int main(int argc, char * argv[])
     // N'hésitez pas à faire des fonctions annexes ; si la fonction main
     // ne dépassait pas une trentaine de lignes, ce serait bien.
 
-
     if (order == ORDER_COMPUTE_PRIME_LOCAL) {
         // TODO : 3.3 client (bis) -> code pour calculer les nombres premiers en local
 
@@ -177,11 +174,11 @@ int main(int argc, char * argv[])
 
     } else {
         // code pour communiquer avec le master
-
         // TODO : section critique avec sémaphore
+        //entrée en section critique pour bloquer les clients
+        sem_edit(sem_mc_states, -1, SEM_CLIENT);
 
-
-        //valeur de retour des fonctions ipc
+        //valeur de retour pour les assert
         int ret;
         //tube nommé entre master et client
         int mc_fd, cm_fd;
@@ -194,25 +191,21 @@ int main(int argc, char * argv[])
         myassert(cm_fd != -1, "ouverture du tube client -> master en écriture a échoué");
         printf("ouverture client -> master ecriture ok\n");
 
-
         // Communication entre Client et Master (Matteo)
         whichOrder(order, number, mc_fd, cm_fd);
 
-
         // TODO : sortir de la section critique
+        sem_edit(sem_mc_states, +1, SEM_CLIENT);
 
-
-        // destruction des tubes nommés
+        // fermeture des tubes nommés
         ret = close(mc_fd);
         myassert(ret == 0, "fermeture du tube master -> client a échoué");
         ret = close(cm_fd);
         myassert(ret == 0, "fermeture du tube client -> master a échoué");
 
-
         // TODO : libérer le master gràce au deuxième sémaphore
-
+        sem_edit(sem_mc_states, +1, SEM_MASTER);
     }
-
 
     return EXIT_SUCCESS;
 }

@@ -96,7 +96,21 @@ void whichOrder(int order, int mc_fd, int cm_fd){
 /************************************************************************
  * boucle principale de communication avec le client
  ************************************************************************/
-void loop(int mc_fd, int cm_fd)
+/*
+    Au niveau des sémaphores :
+        le client -1 celui bloquant les clients
+        celui du master est déjà à 0
+            (le master ne pourra pas lancer un nouveau tour de boucle avant que le client ne le libère)
+        execution de l'ordre
+        le client +1 le sémaphore du master -> le master attend un ordre
+        le client +1 le sémaphore des clients -> un client peut donner un ordre
+    Paramètres :
+    -int mc_fd : file descriptor du tube master -> client
+    -int cm_fd : file descriptor du tube client -> master
+    -int sem_mc_states : tableau de sémaphores controllant la communication master <-> client
+    ...
+*/
+void loop(int mc_fd, int cm_fd, int sem_mc_states)
 {
     // boucle infinie :
     // - ouverture des tubes (cf. rq client.c)
@@ -125,9 +139,8 @@ void loop(int mc_fd, int cm_fd)
     //
     // il est important d'ouvrir et fermer les tubes nommés à chaque itération
     // voyez-vous pourquoi ?
-    
-    int ret;
 
+    int ret;
     int order;
 
     // Ouverture des tubes entre Master et Client
@@ -158,8 +171,7 @@ void loop(int mc_fd, int cm_fd)
     // TODO :
     // - attendre ordre du client avant de continuer (sémaphore : précédence)
     // - revenir en début de boucle
-
-    
+    sem_edit(sem_mc_states, -1, SEM_MASTER);
 }
 
 
@@ -173,23 +185,29 @@ int main(int argc, char * argv[])
         usage(argv[0], NULL);
     }
 
-    //valeur de retour des fonctions ipc
-    //int ret;
+    //valeur de retour
+    int ret;
+
     //tube nommé entre master et client
     int mc_fd = 0, cm_fd = 0; // Initialisation à 0 pour éviter 2 warnings sur l'appel de la fonction Loop.
 
     // - création des sémaphores
-    // semaphore indiquant si le master peut prendre des ordres des clients (loic)
-
     /*
-    key_t key = ftok(FILENAME, MASTER_CLIENT);
-    int sem_master_state = semget(key, 1, IPC_CREAT|IPC_EXCL|0644);
-    ret = semctl(sem_master_state, 0, SETVAL, 1);
+        on crée 2 sémaphores liés à la variable sem_mc_states.
+        en position 0 celui bloquant les clients
+        en position 1 celui bloquant le master
+        les positions sont masquées dans le .h
     */
+    key_t key = ftok(FILENAME, MASTER_CLIENT);
+    myassert(key == -1, "Erreur dans ftok(), la clé est incorrecte");
+    int sem_mc_states = semget(key, 2, IPC_CREAT|IPC_EXCL|0644);
+    myassert(sem_mc_states == -1, "Echec de la création des sémaphores client <-> master");
+    ret = semctl(sem_mc_states, 0, SETALL, 1);
+    
+    //semaphore pour les dialogues worker-master (loic)
 
-        //un pour les dialogues worker-master (loic)
     // - création des tubes nommés master <-> client
-    int ret = mkfifo(TUBE_MC, 0644);
+    ret = mkfifo(TUBE_MC, 0644);
     myassert(ret == 0, "création du tube master -> client a échoué");
     ret = mkfifo(TUBE_CM, 0644);
     myassert(ret == 0, "création du tube client -> master a échoué");
@@ -197,10 +215,13 @@ int main(int argc, char * argv[])
     // - création du premier worker
 
     // boucle infinie
-    loop(mc_fd, cm_fd);
+    //mise à 0 du sémaphore du master pour qu'il se bloque en fin de tour de boucle
+    sem_edit(sem_mc_states, -1, SEM_MASTER);
+    loop(mc_fd, cm_fd, sem_mc_states);
 
-
-    //ret = semctl(sem_master_state, -1, IPC_RMID);
+    //destruction des sémaphore entre le master et les clients
+    ret = semctl(sem_mc_states, -1, IPC_RMID);
+    myassert(ret == -1, "Erreur lors de la destruction des semaphores client <-> master");
     ret = unlink(TUBE_MC);
     myassert(ret == 0, "suppression du tube master -> client a échoué");
     ret = unlink(TUBE_CM);

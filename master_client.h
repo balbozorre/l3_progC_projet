@@ -18,6 +18,9 @@
 // (loic) valeurs necessaire à ftok()
 #define FILENAME "0README"
 #define MASTER_CLIENT 27
+//valeur masquant les position des semaphore master <-> client
+#define SEM_CLIENT 0
+#define SEM_MASTER 1
 
 //valeurs pour les tubes
 #define TUBE_MC "master_client"
@@ -34,5 +37,12 @@
 // bref n'hésitez à mettre nombre de fonctions avec des noms explicites
 // pour masquer l'implémentation
 
+/*
+modifie un semaphore a la position sem_pos dans le tableau de semaphore
+sem_id : id du tableau de semaphore
+value : incrément du semaphore
+sem_pos : position dans le tableau, de 0 à lenght - 1.
+*/
+void sem_edit(int sem_id, int value, int sem_pos);
 
 #endif
