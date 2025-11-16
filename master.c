@@ -199,10 +199,15 @@ int main(int argc, char * argv[])
         les positions sont masquées dans le .h
     */
     key_t key = ftok(FILENAME, MASTER_CLIENT);
-    myassert(key == -1, "Erreur dans ftok(), la clé est incorrecte");
+    myassert(key != -1, "Erreur dans ftok(), la clé est incorrecte");
     int sem_mc_states = semget(key, 2, IPC_CREAT|IPC_EXCL|0644);
-    myassert(sem_mc_states == -1, "Echec de la création des sémaphores client <-> master");
-    ret = semctl(sem_mc_states, 0, SETALL, 1);
+    myassert(sem_mc_states != -1, "Echec de la création des sémaphores client <-> master");
+
+    //initialisation des semaphores
+    ret = semctl(sem_mc_states, SEM_CLIENT, SETVAL, 1);
+    myassert(ret != -1, "Erreur à l'initialisation du semaphor client");
+    ret = semctl(sem_mc_states, SEM_MASTER, SETVAL, 1);
+    myassert(ret != -1, "Erreur à l'initialisation du semaphor master");
     
     //semaphore pour les dialogues worker-master (loic)
 
@@ -220,8 +225,10 @@ int main(int argc, char * argv[])
     loop(mc_fd, cm_fd, sem_mc_states);
 
     //destruction des sémaphore entre le master et les clients
+    printf("Destruction des semaphores\n");
     ret = semctl(sem_mc_states, -1, IPC_RMID);
-    myassert(ret == -1, "Erreur lors de la destruction des semaphores client <-> master");
+    myassert(ret != -1, "Erreur lors de la destruction des semaphores client <-> master");
+    printf("Suppression des tubes nommés\n");
     ret = unlink(TUBE_MC);
     myassert(ret == 0, "suppression du tube master -> client a échoué");
     ret = unlink(TUBE_CM);

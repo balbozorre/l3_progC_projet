@@ -16,7 +16,7 @@
 #include <unistd.h>
 
 // (loic) valeurs necessaire à ftok()
-#define FILENAME "0README"
+#define FILENAME "Makefile"
 #define MASTER_CLIENT 27
 //valeur masquant les position des semaphore master <-> client
 #define SEM_CLIENT 0

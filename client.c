@@ -134,10 +134,12 @@ int main(int argc, char * argv[])
 {
     int number = 0;
     int order = parseArgs(argc, argv, &number);
-    printf("%d\n", order); // pour éviter le warning
+    //printf("%d\n", order); // pour éviter le warning
 
     key_t key = ftok(FILENAME, MASTER_CLIENT);
+    myassert(key != -1, "Clé renvoyé par ftok incorrecte");
     int sem_mc_states = semget(key, 2, 0);
+    myassert(sem_mc_states != -1, "Echec de la recupération des sémaphores client <-> master");
 
     // order peut valoir 5 valeurs (cf. master_client.h) :
     //      - ORDER_COMPUTE_PRIME_LOCAL
