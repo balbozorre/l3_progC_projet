@@ -78,6 +78,55 @@ static int parseArgs(int argc, char * argv[], int *number)
 
 
 /************************************************************************
+ * Gestion des ordres envoyé au Master
+ ************************************************************************/
+
+void whichOrder(int order, int number, int mc_fd, int cm_fd){
+    int ret;
+
+    if (order == ORDER_STOP) {
+        int ack;
+        ret = write(cm_fd, &order, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de l'ordre \"stop\" dans le tube client -> master a échoué");
+
+        ret = read(mc_fd, &ack, sizeof(int));
+        myassert(ret == sizeof(int), "lecture de l'accusé de reception d'arret du master dans le tube master -> client a échoué");
+        printf("Le master a bien reçu l'ordre d'arrêt et a bien supprimé tout les worker\n");
+    }
+    else if (order == ORDER_COMPUTE_PRIME) {
+        int isprime;
+        ret = write(cm_fd, &order, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de l'ordre \"demande si un nombre est premier\" dans le tube client -> master a échoué");
+        ret = write(cm_fd, &number, sizeof(int));
+        myassert(ret == sizeof(int), "écriture du nombre a calculer dans le tube client -> master a échoué");
+        
+        ret = read(mc_fd, &isprime, sizeof(int));
+        myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube master -> client a échoué");
+        printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+    }
+    else if (order == ORDER_HOW_MANY_PRIME) {
+        int count;
+        ret = write(cm_fd, &order, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de l'ordre \"combien de nombres premiers calculés\" dans le tube client -> master a échoué");
+        
+        ret = read(mc_fd, &count, sizeof(int));
+        myassert(ret == sizeof(int), "lecture du nombre de nombre premier connu dans le tube master -> client a échoué");
+        printf("Le master a calculé %d nombres premiers\n", count);
+    }
+    else if (order == ORDER_HIGHEST_PRIME) {
+        int highest;
+        ret = write(cm_fd, &order, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de l'ordre \"quel est le plus grand nombre premier calculé\" dans le tube client -> master a échoué");
+        
+        ret = read(mc_fd, &highest, sizeof(int));
+        myassert(ret == sizeof(int), "lecture du plus grand nombre premier connu dans le tube master -> client a échoué");
+        printf("Le plus grand nombre premier calculé par le master est %d\n", highest);
+    }
+}
+
+
+
+/************************************************************************
  * Fonction principale
  ************************************************************************/
 
@@ -145,45 +194,10 @@ int main(int argc, char * argv[])
         myassert(cm_fd != -1, "ouverture du tube client -> master en écriture a échoué");
         printf("ouverture client -> master ecriture ok\n");
 
-        // Communication entre Client et Master (Matteo)
-        if (order == ORDER_STOP) {
-            int ack;
-            ret = write(cm_fd, &order, sizeof(int));
-            myassert(ret == sizeof(int), "écriture de l'ordre \"stop\" dans le tube client -> master a échoué");
 
-            ret = read(mc_fd, &ack, sizeof(int));
-            myassert(ret == sizeof(int), "lecture de l'accusé de reception d'arret du master dans le tube master -> client a échoué");
-            printf("Le master a bien reçu l'ordre d'arrêt et a bien supprimé tout les worker\n");
-        }
-        else if (order == ORDER_COMPUTE_PRIME) {
-            int isprime;
-            ret = write(cm_fd, &order, sizeof(int));
-            myassert(ret == sizeof(int), "écriture de l'ordre \"demande si un nombre est premier\" dans le tube client -> master a échoué");
-            ret = write(cm_fd, &number, sizeof(int));
-            myassert(ret == sizeof(int), "écriture du nombre a calculer dans le tube client -> master a échoué");
-            
-            ret = read(mc_fd, &isprime, sizeof(int));
-            myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube master -> client a échoué");
-            printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
-        }
-        else if (order == ORDER_HOW_MANY_PRIME) {
-            int count;
-            ret = write(cm_fd, &order, sizeof(int));
-            myassert(ret == sizeof(int), "écriture de l'ordre \"combien de nombres premiers calculés\" dans le tube client -> master a échoué");
-            
-            ret = read(mc_fd, &count, sizeof(int));
-            myassert(ret == sizeof(int), "lecture du nombre de nombre premier connu dans le tube master -> client a échoué");
-            printf("Le master a calculé %d nombres premiers\n", count);
-        }
-        else if (order == ORDER_HIGHEST_PRIME) {
-            int highest;
-            ret = write(cm_fd, &order, sizeof(int));
-            myassert(ret == sizeof(int), "écriture de l'ordre \"quel est le plus grand nombre premier calculé\" dans le tube client -> master a échoué");
-            
-            ret = read(mc_fd, &highest, sizeof(int));
-            myassert(ret == sizeof(int), "lecture du plus grand nombre premier connu dans le tube master -> client a échoué");
-            printf("Le plus grand nombre premier calculé par le master est %d\n", highest);
-        }
+        // Communication entre Client et Master (Matteo)
+        whichOrder(order, number, mc_fd, cm_fd);
+
 
         // TODO : sortir de la section critique
 

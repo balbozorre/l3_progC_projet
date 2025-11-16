@@ -43,6 +43,57 @@ static void usage(const char *exeName, const char *message)
 
 
 /************************************************************************
+ * Gestion des ordres envoyé par le Client
+ ************************************************************************/
+
+void whichOrder(int order, int mc_fd, int cm_fd){
+    int ret;
+
+    if (order == ORDER_STOP) {
+        int ack = 1; // équivalent a true
+
+        // TODO : envoyer ordre de fin au premier worker et attendre sa fin
+        // envoyer un accusé de réception au client
+
+        // Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
+        ret = write(mc_fd, &ack, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de l'accusé de reception d'arrêt du master dans le tube master -> client a échoué");
+    }
+    else if (order == ORDER_COMPUTE_PRIME) {
+        int number, isprime;
+
+        ret = read(cm_fd, &number, sizeof(int));
+        myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
+        
+        // TODO : pipeline workers
+
+        /*
+        ret = read(wm_fd, &isprime, sizeof(int));  // Reponse du worker
+        myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
+        */
+       // Remplacement de la réponse du worker
+        isprime = 1;  // Valeur arbitraire tant les workers n'ont pas été fait
+
+        ret = write(mc_fd, &isprime, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
+        printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+    }
+    else if (order == ORDER_HOW_MANY_PRIME) {
+        int count = 13;  // Valeur arbitraire tant les workers n'ont pas été fait
+
+        ret = write(mc_fd, &count, sizeof(int));
+        myassert(ret == sizeof(int), "écriture du nombre de nombre premier connu dans le tube master -> client a échoué");
+    }
+    else if (order == ORDER_HIGHEST_PRIME) {
+        int highest = 1637;  // Valeur arbitraire tant les workers n'ont pas été fait
+                
+        ret = write(mc_fd, &highest, sizeof(int));
+        myassert(ret == sizeof(int), "écriture du plus grand nombre premier connu dans le tube master -> client a échoué");
+    }
+}
+
+
+/************************************************************************
  * boucle principale de communication avec le client
  ************************************************************************/
 void loop(int mc_fd, int cm_fd)
@@ -93,47 +144,8 @@ void loop(int mc_fd, int cm_fd)
     myassert(ret == sizeof(int), "lecture de l'ordre dans le tube client -> master a échoué");
 
 
-    if (order == ORDER_STOP) {
-        int ack = 1; // équivalent a true
-
-        // TODO : envoyer ordre de fin au premier worker et attendre sa fin
-        // envoyer un accusé de réception au client
-
-        // Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
-        ret = write(mc_fd, &ack, sizeof(int));
-        myassert(ret == sizeof(int), "écriture de l'accusé de reception d'arrêt du master dans le tube master -> client a échoué");
-    }
-    else if (order == ORDER_COMPUTE_PRIME) {
-        int number, isprime;
-
-        ret = read(cm_fd, &number, sizeof(int));
-        myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
-        
-        // TODO : pipeline workers
-
-        /*
-        ret = read(wm_fd, &isprime, sizeof(int));  // Reponse du worker
-        myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
-        */
-       // Remplacement de la réponse du worker
-        isprime = 1;  // Valeur arbitraire tant les workers n'ont pas été fait
-
-        ret = write(mc_fd, &isprime, sizeof(int));
-        myassert(ret == sizeof(int), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
-        printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
-    }
-    else if (order == ORDER_HOW_MANY_PRIME) {
-        int count = 13;  // Valeur arbitraire tant les workers n'ont pas été fait
-
-        ret = write(mc_fd, &count, sizeof(int));
-        myassert(ret == sizeof(int), "écriture du nombre de nombre premier connu dans le tube master -> client a échoué");
-    }
-    else if (order == ORDER_HIGHEST_PRIME) {
-        int highest = 1637;  // Valeur arbitraire tant les workers n'ont pas été fait
-                
-        ret = write(mc_fd, &highest, sizeof(int));
-        myassert(ret == sizeof(int), "écriture du plus grand nombre premier connu dans le tube master -> client a échoué");
-    }
+    // Communication entre Master et Client (Matteo)
+    whichOrder(order,mc_fd,cm_fd);
 
 
     // destruction des tubes nommés, des sémaphores, ...
@@ -164,7 +176,7 @@ int main(int argc, char * argv[])
     //valeur de retour des fonctions ipc
     //int ret;
     //tube nommé entre master et client
-    int mc_fd, cm_fd;
+    int mc_fd = 0, cm_fd = 0; // Initialisation à 0 pour éviter 2 warnings sur l'appel de la fonction Loop.
 
     // - création des sémaphores
     // semaphore indiquant si le master peut prendre des ordres des clients (loic)
