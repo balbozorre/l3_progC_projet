@@ -46,7 +46,7 @@ static void usage(const char *exeName, const char *message)
  * Gestion des ordres envoyé par le Client
  ************************************************************************/
 
-void whichOrder(int order, int mc_fd, int cm_fd){
+bool whichOrder(int order, int mc_fd, int cm_fd, bool boucle){
     int ret;
 
     if (order == ORDER_STOP) {
@@ -58,6 +58,8 @@ void whichOrder(int order, int mc_fd, int cm_fd){
         // Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
         ret = write(mc_fd, &ack, sizeof(int));
         myassert(ret == sizeof(int), "écriture de l'accusé de reception d'arrêt du master dans le tube master -> client a échoué");
+        
+        boucle = false;
     }
     else if (order == ORDER_COMPUTE_PRIME) {
         int number, isprime;
@@ -76,7 +78,7 @@ void whichOrder(int order, int mc_fd, int cm_fd){
 
         ret = write(mc_fd, &isprime, sizeof(int));
         myassert(ret == sizeof(int), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
-        printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+        //printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
     }
     else if (order == ORDER_HOW_MANY_PRIME) {
         int count = 13;  // Valeur arbitraire tant les workers n'ont pas été fait
@@ -90,6 +92,7 @@ void whichOrder(int order, int mc_fd, int cm_fd){
         ret = write(mc_fd, &highest, sizeof(int));
         myassert(ret == sizeof(int), "écriture du plus grand nombre premier connu dans le tube master -> client a échoué");
     }
+    return boucle;
 }
 
 
@@ -142,36 +145,43 @@ void loop(int mc_fd, int cm_fd, int sem_mc_states)
 
     int ret;
     int order;
+    bool boucle = true;
 
-    // Ouverture des tubes entre Master et Client
-    mc_fd = open(TUBE_MC, O_WRONLY);
-    myassert(mc_fd != -1, "ouverture du tube master -> client en écriture a échoué");
-    printf("ouverture master -> client ecriture ok\n");
+    while (boucle) {
+        // Ouverture des tubes entre Master et Client
+        mc_fd = open(TUBE_MC, O_WRONLY);
+        myassert(mc_fd != -1, "ouverture du tube master -> client en écriture a échoué");
+        //printf("ouverture master -> client ecriture ok\n");
 
-    cm_fd = open(TUBE_CM, O_RDONLY);
-    myassert(cm_fd != -1, "ouverture du tube client -> master en lecture a échoué");
-    printf("ouverture client -> master lecture ok\n");
+        cm_fd = open(TUBE_CM, O_RDONLY);
+        myassert(cm_fd != -1, "ouverture du tube client -> master en lecture a échoué");
+        //printf("ouverture client -> master lecture ok\n");
 
-    // Lecture de l'ordre envoyé par Client
-    ret = read(cm_fd, &order, sizeof(int));
-    myassert(ret == sizeof(int), "lecture de l'ordre dans le tube client -> master a échoué");
-
-
-    // Communication entre Master et Client (Matteo)
-    whichOrder(order,mc_fd,cm_fd);
+        // Lecture de l'ordre envoyé par Client
+        ret = read(cm_fd, &order, sizeof(int));
+        myassert(ret == sizeof(int), "lecture de l'ordre dans le tube client -> master a échoué");
 
 
-    // destruction des tubes nommés, des sémaphores, ...
-    ret = close(mc_fd);
-    myassert(ret == 0, "fermeture du tube master -> client a échoué");
-    ret = close(cm_fd);
-    myassert(ret == 0, "fermeture du tube client -> master a échoué");
+        // Communication entre Master et Client (Matteo)
+        boucle = whichOrder(order,mc_fd,cm_fd,boucle);
 
 
-    // TODO :
-    // - attendre ordre du client avant de continuer (sémaphore : précédence)
-    // - revenir en début de boucle
-    sem_edit(sem_mc_states, -1, SEM_MASTER);
+        // destruction des tubes nommés, des sémaphores, ...
+        ret = close(mc_fd);
+        myassert(ret == 0, "fermeture du tube master -> client a échoué");
+        //printf("fermeture master -> client ok\n");
+
+        ret = close(cm_fd);
+        myassert(ret == 0, "fermeture du tube client -> master a échoué");
+        //printf("fermeture client -> master ok\n");
+
+
+        // TODO :
+        // - attendre ordre du client avant de continuer (sémaphore : précédence)
+        // - revenir en début de boucle
+        sem_edit(sem_mc_states, -1, SEM_MASTER);
+    
+        }
 }
 
 
@@ -225,10 +235,10 @@ int main(int argc, char * argv[])
     loop(mc_fd, cm_fd, sem_mc_states);
 
     //destruction des sémaphore entre le master et les clients
-    printf("Destruction des semaphores\n");
+    //printf("Destruction des semaphores\n");
     ret = semctl(sem_mc_states, -1, IPC_RMID);
     myassert(ret != -1, "Erreur lors de la destruction des semaphores client <-> master");
-    printf("Suppression des tubes nommés\n");
+    //printf("Suppression des tubes nommés\n");
     ret = unlink(TUBE_MC);
     myassert(ret == 0, "suppression du tube master -> client a échoué");
     ret = unlink(TUBE_CM);
