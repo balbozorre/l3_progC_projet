@@ -46,7 +46,7 @@ static void usage(const char *exeName, const char *message)
  * Gestion des ordres envoyé par le Client
  ************************************************************************/
 
-void whichOrder(int order, int mc_fd, int cm_fd){
+void whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd){
     int ret;
 
     if (order == ORDER_STOP) {
@@ -110,7 +110,7 @@ void whichOrder(int order, int mc_fd, int cm_fd){
     -int sem_mc_states : tableau de sémaphores controllant la communication master <-> client
     ...
 */
-void loop(int mc_fd, int cm_fd, int sem_mc_states)
+void loop(int mc_fd, int cm_fd, int mw_fd, int wm_fd, int sem_mc_states)
 {
     // boucle infinie :
     // - ouverture des tubes (cf. rq client.c)
@@ -147,9 +147,16 @@ void loop(int mc_fd, int cm_fd, int sem_mc_states)
     mc_fd = open(TUBE_MC, O_WRONLY);
     myassert(mc_fd != -1, "ouverture du tube master -> client en écriture a échoué");
     printf("ouverture master -> client ecriture ok\n");
-
     cm_fd = open(TUBE_CM, O_RDONLY);
     myassert(cm_fd != -1, "ouverture du tube client -> master en lecture a échoué");
+    printf("ouverture client -> master lecture ok\n");
+
+    // Ouverture des tubes entre Master et Worker
+    mw_fd = open(TUBE_MW, O_WRONLY);
+    myassert(mc_fd != -1, "ouverture du tube master -> worker en écriture a échoué");
+    printf("ouverture master -> client ecriture ok\n");
+    wm_fd = open(TUBE_WM, O_RDONLY);
+    myassert(cm_fd != -1, "ouverture du tube worker -> master en lecture a échoué");
     printf("ouverture client -> master lecture ok\n");
 
     // Lecture de l'ordre envoyé par Client
@@ -158,7 +165,7 @@ void loop(int mc_fd, int cm_fd, int sem_mc_states)
 
 
     // Communication entre Master et Client (Matteo)
-    whichOrder(order,mc_fd,cm_fd);
+    whichOrder(order,mc_fd,cm_fd, mw_fd, wm_fd);
 
 
     // destruction des tubes nommés, des sémaphores, ...
@@ -189,7 +196,7 @@ int main(int argc, char * argv[])
     int ret;
 
     //tube nommé entre master et client
-    int mc_fd = 0, cm_fd = 0; // Initialisation à 0 pour éviter 2 warnings sur l'appel de la fonction Loop.
+    int mc_fd = 0, cm_fd = 0, mw_fd = 0, wm_fd = 0; // Initialisation à 0 pour éviter 2 warnings sur l'appel de la fonction Loop.
 
     // - création des sémaphores
     /*
@@ -217,17 +224,28 @@ int main(int argc, char * argv[])
     ret = mkfifo(TUBE_CM, 0644);
     myassert(ret == 0, "création du tube client -> master a échoué");
 
+    // - création des tubes nommés master <-> worker
+    ret = mkfifo(TUBE_MW, 0644);
+    myassert(ret == 0, "création du tube master -> worker a échoué");
+    ret = mkfifo(TUBE_WM, 0644);
+    myassert(ret == 0, "création du tube worker -> master a échoué");
+
     // - création du premier worker
+    // non testé !
+    //char *args[]={"./worker",[arguments],NULL};
+    //execv(args[0], args);
+    // non testé !
 
     // boucle infinie
     //mise à 0 du sémaphore du master pour qu'il se bloque en fin de tour de boucle
     sem_edit(sem_mc_states, -1, SEM_MASTER);
-    loop(mc_fd, cm_fd, sem_mc_states);
+    loop(mc_fd, cm_fd, mw_fd, wm_fd, sem_mc_states);
 
     //destruction des sémaphore entre le master et les clients
     printf("Destruction des semaphores\n");
     ret = semctl(sem_mc_states, -1, IPC_RMID);
     myassert(ret != -1, "Erreur lors de la destruction des semaphores client <-> master");
+
     printf("Suppression des tubes nommés\n");
     ret = unlink(TUBE_MC);
     myassert(ret == 0, "suppression du tube master -> client a échoué");
