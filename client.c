@@ -94,14 +94,14 @@ void whichOrder(int order, int number, int mc_fd, int cm_fd){
         printf("Le master a bien reçu l'ordre d'arrêt et a bien supprimé tout les worker\n");
     }
     else if (order == ORDER_COMPUTE_PRIME) {
-        int isprime;
+        bool isprime;
         ret = write(cm_fd, &order, sizeof(int));
         myassert(ret == sizeof(int), "écriture de l'ordre \"demande si un nombre est premier\" dans le tube client -> master a échoué");
         ret = write(cm_fd, &number, sizeof(int));
         myassert(ret == sizeof(int), "écriture du nombre a calculer dans le tube client -> master a échoué");
         
-        ret = read(mc_fd, &isprime, sizeof(int));
-        myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube master -> client a échoué");
+        ret = read(mc_fd, &isprime, sizeof(bool));
+        myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier dans le tube master -> client a échoué");
         printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
     }
     else if (order == ORDER_HOW_MANY_PRIME) {

@@ -22,10 +22,10 @@ donc les deux auront l'include necessaire aux semaphore / tubes
 // on peut ici définir une structure stockant tout ce dont le master
 // a besoin
 
-// Idée :
-//  Structure de données de type :
-//        Count;
-//        Highest;
+typedef struct {
+    int count;
+    int highest;
+} masterData;
 
 /************************************************************************
  * Usage et analyse des arguments passés en ligne de commande
@@ -44,7 +44,7 @@ static void usage(const char *exeName, const char *message)
  * Gestion des ordres envoyé par le Client
  ************************************************************************/
 
-bool whichOrder(int order, int mc_fd, int cm_fd, bool running){
+bool whichOrder(int order, int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaster, masterData *data, bool running){
     int ret;
 
     if (order == ORDER_STOP) {
@@ -52,6 +52,8 @@ bool whichOrder(int order, int mc_fd, int cm_fd, bool running){
 
         // TODO : envoyer ordre de fin au premier worker et attendre sa fin
         // envoyer un accusé de réception au client
+        ret = write(fd_toWorker, &order, sizeof(int));
+        myassert(ret == sizeof(int), "écriture de l'ordre \"stop\" dans le tube master -> worker a échoué");
 
         // Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
         ret = write(mc_fd, &ack, sizeof(bool));
@@ -60,28 +62,27 @@ bool whichOrder(int order, int mc_fd, int cm_fd, bool running){
         running = false;
     }
     else if (order == ORDER_COMPUTE_PRIME) {
-        int number, isprime;
+        int number;
+        bool isprime;
 
         ret = read(cm_fd, &number, sizeof(int));
         myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
         
         // TODO : pipeline workers
-        /*
-        int v;
-        ret = read(wm_fd, &v, sizeof(int));
-        myassert(ret == sizeof(int), "test");
-        printf("Test entre worker et master %d\n", v);
-        */
-       
-        /*
-        ret = read(wm_fd, &isprime, sizeof(int));  // Reponse du worker
-        myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
-        */
-       // Remplacement de la réponse du worker
-        isprime = 1;  // Valeur arbitraire tant les workers n'ont pas été fait
+        for (int i = data->highest; i <= number; i++) {
+            ret = write(fd_toWorker, &i, sizeof(int));
+            myassert(ret == sizeof(int), "écriture du nombre à tester dans le tube master -> worker a échoué");
 
-        ret = write(mc_fd, &isprime, sizeof(int));
-        myassert(ret == sizeof(int), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
+            ret = read(fd_toMaster, &isprime, sizeof(bool));  // Reponse du worker
+            myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
+            
+            if (isprime) {
+                data->count += 1;
+                data->highest = i;
+            }
+        }
+        ret = write(mc_fd, &isprime, sizeof(bool));
+        myassert(ret == sizeof(bool), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
         //printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
     }
     else if (order == ORDER_HOW_MANY_PRIME) {
@@ -117,7 +118,7 @@ bool whichOrder(int order, int mc_fd, int cm_fd, bool running){
     -int sem_mc_states : tableau de sémaphores controllant la communication master <-> client
     ...
 */
-void loop(int mc_fd, int cm_fd, int sem_mc_states)
+void loop(int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaster, int sem_mc_states, masterData *data)
 {
     // boucle infinie :
     // - ouverture des tubes (cf. rq client.c)
@@ -166,7 +167,7 @@ void loop(int mc_fd, int cm_fd, int sem_mc_states)
 
 
         // Communication entre Master et Client (Matteo)
-        running = whichOrder(order,mc_fd,cm_fd,running);
+        running = whichOrder(order,mc_fd,cm_fd,fd_toWorker,fd_toMaster,data,running);
 
 
         // destruction des tubes nommés, des sémaphores, ...
@@ -208,6 +209,8 @@ int main(int argc, char * argv[])
 
     pid_t pid_child;
 
+    masterData *data = (masterData *) malloc(sizeof(masterData));
+
     // - création des sémaphores
     /*
         on crée 2 sémaphores liés à la variable sem_mc_states.
@@ -237,11 +240,9 @@ int main(int argc, char * argv[])
     // - création des tubes nommés master <-> worker
     ret = pipe(fd_toWorker);
     myassert(ret == 0, "création du tube master -> worker a échoué");
-    pipe(fd_toWorker);
 
     ret = pipe(fd_toMaster);
     myassert(ret == 0, "création du tube worker -> master a échoué");
-    pipe(fd_toMaster);
 
     pid_child = fork();
 
@@ -266,7 +267,7 @@ int main(int argc, char * argv[])
     // boucle infinie
     //mise à 0 du sémaphore du master pour qu'il se bloque en fin de tour de boucle
     sem_edit(sem_mc_states, -1, SEM_MASTER);
-    loop(mc_fd, cm_fd, sem_mc_states);
+    loop(mc_fd, cm_fd, fd_toWorker[1], fd_toMaster[0], sem_mc_states, data);
 
     //destruction des sémaphore entre le master et les clients
     printf("Destruction des semaphores\n");
@@ -279,7 +280,11 @@ int main(int argc, char * argv[])
     ret = unlink(TUBE_CM);
     myassert(ret == 0, "suppression du tube client -> master a échoué");
 
-    // AJOUTER UNLINK DES TUBES master <-> worker
+    // Fermeture des tubes entre master et worker coté master
+    close(fd_toWorker[1]);
+    close(fd_toMaster[0]);
+
+    free(data);
 
     return EXIT_SUCCESS;
 }

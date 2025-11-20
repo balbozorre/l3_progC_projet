@@ -22,9 +22,9 @@ typedef struct {
     bool hasChild;//pour gérer le wait(null) en cas d'ordre stop
     int numberToCompute;
     //file descriptor
-    int fd_previous;
-    int fd_Next;
-    int fd_master;
+    int fdIn;
+    int fdToMaster;
+    int fd_Next[2];
 } workerData;
 
 
@@ -50,15 +50,15 @@ static void parseArgs(int argc, char * argv[], workerData *data)
     }
 
     data->numberToCompute = atoi(argv[1]);
-    data->fd_previous = atoi(argv[2]);
-    data->fd_master = atoi(argv[3]);
+    data->fdIn = atoi(argv[2]);
+    data->fdToMaster = atoi(argv[3]);
 }
 
 /************************************************************************
  * Boucle principale de traitement
  ************************************************************************/
 
-void loop(int fd_previous, int fd_Next, int fd_master, workerData *data)
+void loop(workerData *data)
 {
     // boucle infinie :
     //    attendre l'arrivée d'un nombre à tester (> 1 donc)
@@ -71,67 +71,93 @@ void loop(int fd_previous, int fd_Next, int fd_master, workerData *data)
     //           - s'il y a un worker suivant lui transmettre le nombre
     //           - s'il n'y a pas de worker suivant, le créer
 
-    bool running = false; // à initialiser à true une fois la suite écrite
-    int order, ret;
+    bool running = true;
+    int ret;
 
     while(running) {
 
-        toNext = -1; // à retirer une fois la suite écrite
-        toMaster = -1; // à retirer une fois la suite écrite
-        printf("%d, %d\n", toNext, toMaster); // pour éviter le warning, à retirer une fois la suite écrite
+        // attente de l'arrivée d'un nombre à tester
+        ret = read(data->fdIn, &data->numberToCompute, sizeof(int));
+        myassert(ret == sizeof(int), "Worker: Mauvaise communication entre le précédent worker (ou le master) et le worker actuel.");
 
-        // attente et lecture d'un ordre dans le tube lié au worker N-1
-        ret = read(fromPrevious, &order, sizeof(int));
-        myassert(ret == sizeof(int), "Worker: Mauvaise communication entre précédent worker (ou le master) et le worker actuel.");
-        myassert(order > 1 || order == WORKER_STOP, "Worker: ordre incorrect"); // A voir, parce que si le master envoie -1 ça passe pas a cause du order == WORKER_STOP
+        printf("Worker %d: Nombre reçu à tester : %d\n", data->workerNumber, data->numberToCompute);
 
-        if(order == WORKER_STOP) {
+        if(data->numberToCompute == WORKER_STOP) {
             // Si il y a un worker suivant, transmettre l'ordre et attendre sa fin
+
+            // attente des processus enfant s'ils existent
+
+            if(data->hasChild) {
+                /*
+                    transmettre l'ordre au fils
+                */
+                ret = write(data->fd_Next[1], &data->numberToCompute, sizeof(int));
+                myassert(ret == sizeof(int), "Worker: erreur lors de la transmission de l'ordre d'arrêt au worker suivant.");
+                
+                ret = wait(NULL);
+                myassert(ret >= 0, "Worker: erreur lors de l'attente de la fin d'un enfant d'un fork");
+            }
 
             // Une fois le fils terminé, on peut terminer aussi
             running = false;
+
         }
         else {
             // N est soit divisible par P, soit égal P, sinon on le passe au worker suivant
-            if(order % data->workerNumber == 0) {
-                printf("%d est divisible par %d, ce n'est pas un nombre premier\n", order, data->workerNumber);
-                /*
-                    communication de l'information au master via tube
-                */
+            bool isPrime;
+            int ret;
+            if(data->numberToCompute % data->workerNumber == 0) {
+                printf("%d est divisible par %d, ce n'est pas un nombre premier\n", data->numberToCompute, data->workerNumber);
+                isPrime = false;
+                ret = write(data->fdToMaster, &isPrime, sizeof(bool));
+                myassert(ret == sizeof(bool), "Worker: erreur lors de l'envoi au master de l'information que le nombre n'est pas premier.");
             }
-            else if(order == data->workerNumber) {
-                printf("%d est égal à %d, c'est un nombre premier\n", order, data->workerNumber);
-                /*
-                    communication de l'information au master via tube
-                */
+            else if(data->numberToCompute == data->workerNumber) {
+                printf("%d est égal à %d, c'est un nombre premier\n", data->numberToCompute, data->workerNumber);
+                isPrime = true;
+                ret = write(data->fdToMaster, &isPrime, sizeof(bool));
+                myassert(ret == sizeof(bool), "Worker: erreur lors de l'envoi au master de l'information que le nombre est premier.");
             }
             else {
                 if(!data->hasChild) {
-                    printf("Creation d\'un nouveau worker no %d", data->workerNumber + 1);
+                    printf("Creation d\'un nouveau worker no %d\n", data->workerNumber + 1);
                     /*
                         creation du nouveau worker
                         la transmission à ce nouveau worker se fait en dehors de ce if
                     */
+                    data->hasChild = true;
+
+                    ret = pipe(data->fd_Next);
+                    myassert(ret == 0, "création du tube worker -> worker suivant a échoué");
+
+                    pid_t pid_child = fork();
+
+                    if (pid_child != 0) {
+                        close(data->fd_Next[0]);
+                    } else {
+                        close(data->fd_Next[1]);
+
+                        char str_fd_toNext[20]; // faudrait faire un malloc
+
+                        sprintf(str_fd_toNext,"%d",data->fd_Next[0]);
+
+                        execl("./worker", "./worker", data->numberToCompute, str_fd_toNext, NULL);
+                        EXIT_FAILURE;
+                    }                
                 }
-                printf("Transmission de %d au worker suivant.\n", order);
-                running = false;// à retirer une fois la suite écrite
+                printf("Transmission de %d au worker suivant.\n", data->numberToCompute);
                 /*
                     TODO : partie communication au worker N+1
                 */
+                ret = write(data->fd_Next[1], &data->numberToCompute, sizeof(int));
+                ERREUR - A CORRIGER
+                Partie fork pose probleme
+                myassert(ret == sizeof(int), "Worker: erreur lors de la transmission du nombre à tester au worker suivant.");
+
             }
         }
     }
 
-    // attente des processus enfant s'ils existent
-   /* 
-   if(data->hasChild) {
-        /*
-            transmettre l'ordre au fils
-        */
-       /* ret = wait(NULL);
-        myassert(ret > 0, "Worker: erreur lors de l'attente de la fin d'un enfant d'un fork");
-        */
-    //}
 }
 
 /************************************************************************
@@ -147,33 +173,17 @@ int main(int argc, char * argv[])
     // Envoyer au master un message positif pour dire
     // que le nombre testé est bien premier
 
-    int fromPrevious, toNext = 0, toMaster; // meme qu'en dessous
-    int ret;
+    bool isPrime = true;
+    printf("Je viens d'être créer, donc %d est premier\n", data->numberToCompute);
+    int ret = write(data->fdToMaster, &isPrime, sizeof(bool));
+    myassert(ret == sizeof(bool), "Worker: erreur lors de l'envoi au master de l'information que le nombre est premier.");
 
-
-    fromPrevious = open(TUBE_MW, O_RDONLY);
-    myassert(fromPrevious != -1, "ouverture du tube master -> worker en lecture a échoué");
-    printf("ouverture master -> worker lecture ok\n");
-    
-    toMaster = open(TUBE_WM, O_WRONLY);
-    myassert(toMaster != -1, "ouverture du tube worker -> master en écriture a échoué");
-    printf("ouverture worker -> master ecriture ok\n");
-
-    loop(fromPrevious, toNext, toMaster, data);
-
-    int v = 1000;
-    ret = write(toMaster, &v, sizeof(int));
-    myassert(ret == sizeof(int),"test");
+    loop(data);
 
 
     // libérer les ressources : fermeture des files descriptors par exemple
-    ret = close(fromPrevious);
-    myassert(ret == 0, "fermeture du tube master -> worker a échoué");
-    printf("fermeture master -> worker ok\n");
-
-    ret = close(toMaster);
-    myassert(ret == 0, "fermeture du tube worker -> master a échoué");
-    printf("fermeture worker -> master ok\n");
+    close(data->fdIn);
+    close(data->fdToMaster);
 
     free(data);
 
