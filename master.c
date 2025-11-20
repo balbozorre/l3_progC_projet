@@ -44,7 +44,7 @@ static void usage(const char *exeName, const char *message)
  * Gestion des ordres envoyé par le Client
  ************************************************************************/
 
-bool whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd, bool running){
+bool whichOrder(int order, int mc_fd, int cm_fd, bool running){
     int ret;
 
     if (order == ORDER_STOP) {
@@ -66,10 +66,13 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd, bool runn
         myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
         
         // TODO : pipeline workers
+        /*
         int v;
         ret = read(wm_fd, &v, sizeof(int));
         myassert(ret == sizeof(int), "test");
         printf("Test entre worker et master %d\n", v);
+        */
+       
         /*
         ret = read(wm_fd, &isprime, sizeof(int));  // Reponse du worker
         myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
@@ -161,18 +164,9 @@ void loop(int mc_fd, int cm_fd, int sem_mc_states)
         ret = read(cm_fd, &order, sizeof(int));
         myassert(ret == sizeof(int), "lecture de l'ordre dans le tube client -> master a échoué");
 
-        // Ouverture des tubes entre Master et Worker
-        mw_fd = open(TUBE_MW, O_WRONLY);
-        myassert(mc_fd != -1, "ouverture du tube master -> worker en écriture a échoué");
-        printf("ouverture master -> worker ecriture ok\n");
-        
-        wm_fd = open(TUBE_WM, O_RDONLY);
-        myassert(cm_fd != -1, "ouverture du tube worker -> master en lecture a échoué");
-        printf("ouverture worker -> master lecture ok\n");
-
 
         // Communication entre Master et Client (Matteo)
-        running = whichOrder(order,mc_fd,cm_fd,mw_fd,wm_fd,running);
+        running = whichOrder(order,mc_fd,cm_fd,running);
 
 
         // destruction des tubes nommés, des sémaphores, ...
@@ -183,14 +177,6 @@ void loop(int mc_fd, int cm_fd, int sem_mc_states)
         ret = close(cm_fd);
         myassert(ret == 0, "fermeture du tube client -> master a échoué");
         printf("fermeture client -> master ok\n");
-
-        ret = close(mw_fd);
-        myassert(ret == 0, "fermeture du tube master -> worker a échoué");
-        printf("fermeture master -> worker ok\n");
-
-        ret = close(wm_fd);
-        myassert(ret == 0, "fermeture du tube worker -> master a échoué");
-        printf("fermeture worker -> master ok\n");
 
 
         // TODO :
@@ -218,7 +204,10 @@ int main(int argc, char * argv[])
     //tube nommé entre master et client
     int mc_fd = 0, cm_fd = 0; // Initialisation à 0 pour éviter les warnings sur l'appel de la fonction Loop.
 
-    int fd_worker[2], fd_master[2];
+    int fd_toWorker[2], fd_toMaster[2];
+
+    pid_t pid_child;
+
     // - création des sémaphores
     /*
         on crée 2 sémaphores liés à la variable sem_mc_states.
@@ -246,23 +235,33 @@ int main(int argc, char * argv[])
     myassert(ret == 0, "création du tube client -> master a échoué");
 
     // - création des tubes nommés master <-> worker
-    ret = pipe(fd_worker);
+    ret = pipe(fd_toWorker);
     myassert(ret == 0, "création du tube master -> worker a échoué");
-    pipe(fd_worker);
+    pipe(fd_toWorker);
 
-    ret = pipe(fd_master);
+    ret = pipe(fd_toMaster);
     myassert(ret == 0, "création du tube worker -> master a échoué");
-    pipe(fd_master);
+    pipe(fd_toMaster);
 
+    pid_child = fork();
 
+    if (pid_child != 0) {
+        close(fd_toWorker[0]);
+        close(fd_toMaster[1]);
+    } else {
+        close(fd_toWorker[1]);
+        close(fd_toMaster[0]);
 
+        char str_fd_toWorker[20]; // faudrait faire un malloc poure ke sa soi plu zoli
+        char str_fd_toMaster[20]; // faudrait faire un malloc
 
+        sprintf(str_fd_toWorker,"%d",fd_toWorker[0]);
+        sprintf(str_fd_toMaster,"%d",fd_toMaster[1]);
 
-    // - création du premier worker
-    // non testé !
-    //char *args[]={"./worker",[arguments],NULL};
-    //execv(args[0], args);
-    // non testé !
+        execl("./worker", "./worker", "2", str_fd_toWorker, str_fd_toMaster, NULL);
+        EXIT_FAILURE;
+    }
+    
 
     // boucle infinie
     //mise à 0 du sémaphore du master pour qu'il se bloque en fin de tour de boucle
