@@ -20,14 +20,11 @@
 typedef struct {
     int workerNumber;
     bool hasChild;//pour gérer le wait(null) en cas d'ordre stop
-    /*
-        une autre façon serait de vérifier les file descriptor liés au fils
-    */
-
-    //int numberToCompute;
-    //fds du tube nommé entre worker
-    //fds pour renvoyer le résultat au master
-    // des choses en plus ?
+    int numberToCompute;
+    //file descriptor
+    int fd_previous;
+    int fd_Next;
+    int fd_master;
 } workerData;
 
 
@@ -46,22 +43,22 @@ static void usage(const char *exeName, const char *message)
     exit(EXIT_FAILURE);
 }
 
-static void parseArgs(int argc, char * argv[] /*, structure à remplir*/)
+static void parseArgs(int argc, char * argv[], workerData *data)
 {
     if (argc != 4) {
         usage(argv[0], "Nombre d'arguments incorrect");
     }
 
-    /*
-    à completer
-    */
+    data->numberToCompute = atoi(argv[1]);
+    data->fd_previous = atoi(argv[2]);
+    data->fd_master = atoi(argv[3]);
 }
 
 /************************************************************************
  * Boucle principale de traitement
  ************************************************************************/
 
-void loop(int fromPrevious, int toNext, int toMaster, workerData *data)
+void loop(int fd_previous, int fd_Next, int fd_master, workerData *data)
 {
     // boucle infinie :
     //    attendre l'arrivée d'un nombre à tester (> 1 donc)
@@ -119,7 +116,7 @@ void loop(int fromPrevious, int toNext, int toMaster, workerData *data)
                 printf("Transmission de %d au worker suivant.\n", order);
                 running = false;// à retirer une fois la suite écrite
                 /*
-                    partie communication au worker N+1
+                    TODO : partie communication au worker N+1
                 */
             }
         }
@@ -143,7 +140,8 @@ void loop(int fromPrevious, int toNext, int toMaster, workerData *data)
 
 int main(int argc, char * argv[])
 {
-    parseArgs(argc, argv /*, structure à remplir*/);
+    workerData *data = (workerData *) malloc(sizeof(workerData));
+    parseArgs(argc, argv, data);
     
     // Si on est créé c'est qu'on est un nombre premier
     // Envoyer au master un message positif pour dire
@@ -151,7 +149,6 @@ int main(int argc, char * argv[])
 
     int fromPrevious, toNext = 0, toMaster; // meme qu'en dessous
     int ret;
-    workerData *data = NULL; // Evite un warning, à remplacer
 
 
     fromPrevious = open(TUBE_MW, O_RDONLY);
@@ -177,6 +174,8 @@ int main(int argc, char * argv[])
     ret = close(toMaster);
     myassert(ret == 0, "fermeture du tube worker -> master a échoué");
     printf("fermeture worker -> master ok\n");
+
+    free(data);
 
     return EXIT_SUCCESS;
 }
