@@ -114,7 +114,7 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd, bool runn
     -int sem_mc_states : tableau de sémaphores controllant la communication master <-> client
     ...
 */
-void loop(int mc_fd, int cm_fd, int mw_fd, int wm_fd, int sem_mc_states)
+void loop(int mc_fd, int cm_fd, int sem_mc_states)
 {
     // boucle infinie :
     // - ouverture des tubes (cf. rq client.c)
@@ -216,8 +216,9 @@ int main(int argc, char * argv[])
     int ret;
 
     //tube nommé entre master et client
-    int mc_fd = 0, cm_fd = 0, mw_fd = 0, wm_fd = 0; // Initialisation à 0 pour éviter les warnings sur l'appel de la fonction Loop.
+    int mc_fd = 0, cm_fd = 0; // Initialisation à 0 pour éviter les warnings sur l'appel de la fonction Loop.
 
+    int fd_worker[2], fd_master[2];
     // - création des sémaphores
     /*
         on crée 2 sémaphores liés à la variable sem_mc_states.
@@ -245,10 +246,17 @@ int main(int argc, char * argv[])
     myassert(ret == 0, "création du tube client -> master a échoué");
 
     // - création des tubes nommés master <-> worker
-    ret = mkfifo(TUBE_MW, 0641);
+    ret = pipe(fd_worker);
     myassert(ret == 0, "création du tube master -> worker a échoué");
-    ret = mkfifo(TUBE_WM, 0641);
+    pipe(fd_worker);
+
+    ret = pipe(fd_master);
     myassert(ret == 0, "création du tube worker -> master a échoué");
+    pipe(fd_master);
+
+
+
+
 
     // - création du premier worker
     // non testé !
@@ -259,7 +267,7 @@ int main(int argc, char * argv[])
     // boucle infinie
     //mise à 0 du sémaphore du master pour qu'il se bloque en fin de tour de boucle
     sem_edit(sem_mc_states, -1, SEM_MASTER);
-    loop(mc_fd, cm_fd, mw_fd, wm_fd, sem_mc_states);
+    loop(mc_fd, cm_fd, sem_mc_states);
 
     //destruction des sémaphore entre le master et les clients
     printf("Destruction des semaphores\n");
@@ -273,7 +281,7 @@ int main(int argc, char * argv[])
     myassert(ret == 0, "suppression du tube client -> master a échoué");
 
     // AJOUTER UNLINK DES TUBES master <-> worker
-    
+
     return EXIT_SUCCESS;
 }
 

@@ -14,9 +14,6 @@
 //    - des constantes pour rendre plus lisible les comunications
 //    - des fonctions communes (écriture dans un tube, ...)
 
-// valeur des tubes master <-> worker
-#define TUBE_MW "master_worker"
-#define TUBE_WM "worker_master"
 
 //ordre du master aux worker
 #define WORKER_STOP -1

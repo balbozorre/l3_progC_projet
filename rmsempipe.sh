@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DROITS=644
+DROITS=641
 nb=`ipcs -s | grep $USER | grep $DROITS | wc -l`
 
 if [ $nb -eq 0 ]

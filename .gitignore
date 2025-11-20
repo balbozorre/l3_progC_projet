@@ -1,6 +1,10 @@
 *
 !.gitignore
-!*.c
 !Makefile
 !*.sh
+!*.sh
+!*.c
 !*.h
+!0README
+!*.pdf
+
