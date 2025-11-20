@@ -85,12 +85,12 @@ void whichOrder(int order, int number, int mc_fd, int cm_fd){
     int ret;
 
     if (order == ORDER_STOP) {
-        int ack;
+        bool ack;
         ret = write(cm_fd, &order, sizeof(int));
         myassert(ret == sizeof(int), "écriture de l'ordre \"stop\" dans le tube client -> master a échoué");
 
-        ret = read(mc_fd, &ack, sizeof(int));
-        myassert(ret == sizeof(int), "lecture de l'accusé de reception d'arret du master dans le tube master -> client a échoué");
+        ret = read(mc_fd, &ack, sizeof(bool));
+        myassert(ret == sizeof(bool), "lecture de l'accusé de reception d'arret du master dans le tube master -> client a échoué");
         printf("Le master a bien reçu l'ordre d'arrêt et a bien supprimé tout les worker\n");
     }
     else if (order == ORDER_COMPUTE_PRIME) {
@@ -187,11 +187,11 @@ int main(int argc, char * argv[])
 
         mc_fd = open(TUBE_MC, O_RDONLY);
         myassert(mc_fd != -1, "ouverture du tube master -> client en lecture a échoué");
-        //printf("ouverture master -> client lecture ok\n");
+        printf("ouverture master -> client lecture ok\n");
 
         cm_fd = open(TUBE_CM, O_WRONLY);
         myassert(cm_fd != -1, "ouverture du tube client -> master en écriture a échoué");
-        //printf("ouverture client -> master ecriture ok\n");
+        printf("ouverture client -> master ecriture ok\n");
 
         // Communication entre Client et Master (Matteo)
         whichOrder(order, number, mc_fd, cm_fd);
@@ -202,11 +202,11 @@ int main(int argc, char * argv[])
         // fermeture des tubes nommés
         ret = close(mc_fd);
         myassert(ret == 0, "fermeture du tube master -> client a échoué");
-        //printf("fermeture master -> client ok\n");
+        printf("fermeture master -> client ok\n");
 
         ret = close(cm_fd);
         myassert(ret == 0, "fermeture du tube client -> master a échoué");
-        //printf("fermeture client -> master ok\n");
+        printf("fermeture client -> master ok\n");
 
         // TODO : libérer le master gràce au deuxième sémaphore
         sem_edit(sem_mc_states, +1, SEM_MASTER);

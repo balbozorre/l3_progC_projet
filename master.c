@@ -26,8 +26,6 @@ donc les deux auront l'include necessaire aux semaphore / tubes
 //  Structure de données de type :
 //        Count;
 //        Highest;
-//        ListOfPrime;
-
 
 /************************************************************************
  * Usage et analyse des arguments passés en ligne de commande
@@ -46,20 +44,20 @@ static void usage(const char *exeName, const char *message)
  * Gestion des ordres envoyé par le Client
  ************************************************************************/
 
-bool whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd, bool boucle){
+bool whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd, bool running){
     int ret;
 
     if (order == ORDER_STOP) {
-        int ack = 1; // équivalent a true
+        bool ack = true;
 
         // TODO : envoyer ordre de fin au premier worker et attendre sa fin
         // envoyer un accusé de réception au client
 
         // Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
-        ret = write(mc_fd, &ack, sizeof(int));
-        myassert(ret == sizeof(int), "écriture de l'accusé de reception d'arrêt du master dans le tube master -> client a échoué");
+        ret = write(mc_fd, &ack, sizeof(bool));
+        myassert(ret == sizeof(bool), "écriture de l'accusé de reception d'arrêt du master dans le tube master -> client a échoué");
         
-        boucle = false;
+        running = false;
     }
     else if (order == ORDER_COMPUTE_PRIME) {
         int number, isprime;
@@ -68,7 +66,10 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd, bool bouc
         myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
         
         // TODO : pipeline workers
-
+        int v;
+        ret = read(wm_fd, &v, sizeof(int));
+        myassert(ret == sizeof(int), "test");
+        printf("Test entre worker et master %d\n", v);
         /*
         ret = read(wm_fd, &isprime, sizeof(int));  // Reponse du worker
         myassert(ret == sizeof(int), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
@@ -92,7 +93,7 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int mw_fd, int wm_fd, bool bouc
         ret = write(mc_fd, &highest, sizeof(int));
         myassert(ret == sizeof(int), "écriture du plus grand nombre premier connu dans le tube master -> client a échoué");
     }
-    return boucle;
+    return running;
 }
 
 
@@ -143,19 +144,18 @@ void loop(int mc_fd, int cm_fd, int mw_fd, int wm_fd, int sem_mc_states)
     // il est important d'ouvrir et fermer les tubes nommés à chaque itération
     // voyez-vous pourquoi ?
 
-    int ret;
-    int order;
-    bool boucle = true;
+    bool running = true;
+    int order, ret;
 
-    while (boucle) {
+    while (running) {
         // Ouverture des tubes entre Master et Client
         mc_fd = open(TUBE_MC, O_WRONLY);
         myassert(mc_fd != -1, "ouverture du tube master -> client en écriture a échoué");
-        //printf("ouverture master -> client ecriture ok\n");
+        printf("ouverture master -> client ecriture ok\n");
 
         cm_fd = open(TUBE_CM, O_RDONLY);
         myassert(cm_fd != -1, "ouverture du tube client -> master en lecture a échoué");
-        //printf("ouverture client -> master lecture ok\n");
+        printf("ouverture client -> master lecture ok\n");
 
         // Lecture de l'ordre envoyé par Client
         ret = read(cm_fd, &order, sizeof(int));
@@ -170,18 +170,27 @@ void loop(int mc_fd, int cm_fd, int mw_fd, int wm_fd, int sem_mc_states)
         myassert(cm_fd != -1, "ouverture du tube worker -> master en lecture a échoué");
         printf("ouverture worker -> master lecture ok\n");
 
+
         // Communication entre Master et Client (Matteo)
-        boucle = whichOrder(order,mc_fd,cm_fd,mw_fd,wm_fd,boucle);
+        running = whichOrder(order,mc_fd,cm_fd,mw_fd,wm_fd,running);
 
 
         // destruction des tubes nommés, des sémaphores, ...
         ret = close(mc_fd);
         myassert(ret == 0, "fermeture du tube master -> client a échoué");
-        //printf("fermeture master -> client ok\n");
+        printf("fermeture master -> client ok\n");
 
         ret = close(cm_fd);
         myassert(ret == 0, "fermeture du tube client -> master a échoué");
-        //printf("fermeture client -> master ok\n");
+        printf("fermeture client -> master ok\n");
+
+        ret = close(mw_fd);
+        myassert(ret == 0, "fermeture du tube master -> worker a échoué");
+        printf("fermeture master -> worker ok\n");
+
+        ret = close(wm_fd);
+        myassert(ret == 0, "fermeture du tube worker -> master a échoué");
+        printf("fermeture worker -> master ok\n");
 
 
         // TODO :
@@ -218,7 +227,7 @@ int main(int argc, char * argv[])
     */
     key_t key = ftok(FILENAME, MASTER_CLIENT);
     myassert(key != -1, "Erreur dans ftok(), la clé est incorrecte");
-    int sem_mc_states = semget(key, 2, IPC_CREAT|IPC_EXCL|0644);
+    int sem_mc_states = semget(key, 2, IPC_CREAT|IPC_EXCL|0641);
     myassert(sem_mc_states != -1, "Echec de la création des sémaphores client <-> master");
 
     //initialisation des semaphores
@@ -230,15 +239,15 @@ int main(int argc, char * argv[])
     //semaphore pour les dialogues worker-master (loic)
 
     // - création des tubes nommés master <-> client
-    ret = mkfifo(TUBE_MC, 0644);
+    ret = mkfifo(TUBE_MC, 0641);
     myassert(ret == 0, "création du tube master -> client a échoué");
-    ret = mkfifo(TUBE_CM, 0644);
+    ret = mkfifo(TUBE_CM, 0641);
     myassert(ret == 0, "création du tube client -> master a échoué");
 
     // - création des tubes nommés master <-> worker
-    ret = mkfifo(TUBE_MW, 0644);
+    ret = mkfifo(TUBE_MW, 0641);
     myassert(ret == 0, "création du tube master -> worker a échoué");
-    ret = mkfifo(TUBE_WM, 0644);
+    ret = mkfifo(TUBE_WM, 0641);
     myassert(ret == 0, "création du tube worker -> master a échoué");
 
     // - création du premier worker
@@ -263,7 +272,8 @@ int main(int argc, char * argv[])
     ret = unlink(TUBE_CM);
     myassert(ret == 0, "suppression du tube client -> master a échoué");
 
-
+    // AJOUTER UNLINK DES TUBES master <-> worker
+    
     return EXIT_SUCCESS;
 }
 
