@@ -1,10 +1,11 @@
+# Ignore all files
 *
+
+# Except the following files
 !.gitignore
+!0README.md
 !Makefile
-!*.sh
-!*.sh
+
 !*.c
 !*.h
-!0README
-!*.pdf
-
+!*.sh
