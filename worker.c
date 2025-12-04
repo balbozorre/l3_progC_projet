@@ -80,7 +80,7 @@ void loop(workerData *data)
         ret = read(data->fdIn, &data->numberToCompute, sizeof(int));
         myassert(ret == sizeof(int), "Worker: Mauvaise communication entre le précédent worker (ou le master) et le worker actuel.");
 
-        printf("%d , Worker %d: Nombre reçu à tester : %d\n", getpid(),data->workerNumber, data->numberToCompute);
+        // TRACE("%d - Worker %d : Nombre reçu à tester : %d\n", getpid(),data->workerNumber, data->numberToCompute);
 
         if(data->numberToCompute == WORKER_STOP) {
             // Si il y a un worker suivant, transmettre l'ordre et attendre sa fin
@@ -93,9 +93,11 @@ void loop(workerData *data)
                 */
                 ret = write(data->fd_Next, &data->numberToCompute, sizeof(int));
                 myassert(ret == sizeof(int), "Worker: erreur lors de la transmission de l'ordre d'arrêt au worker suivant.");
-                
+
                 ret = wait(NULL);
                 myassert(ret >= 0, "Worker: erreur lors de l'attente de la fin d'un enfant d'un fork");
+
+                close(data->fd_Next);
             }
 
             // Une fois le fils terminé, on peut terminer aussi
@@ -106,21 +108,23 @@ void loop(workerData *data)
             // N est soit divisible par P, soit égal P, sinon on le passe au worker suivant
             bool isPrime;
             int ret;
-            if(data->numberToCompute % data->workerNumber == 0) {
-                printf("%d , Worker %d : %d est divisible par %d, ce n'est pas un nombre premier\n",getpid(), data->workerNumber, data->numberToCompute, data->workerNumber);
-                isPrime = false;
-                ret = write(data->fdToMaster, &isPrime, sizeof(bool));
-                myassert(ret == sizeof(bool), "Worker: erreur lors de l'envoi au master de l'information que le nombre n'est pas premier.");
-            }
-            else if(data->numberToCompute == data->workerNumber) {
-                printf("%d , Worker %d : %d est égal à %d, c'est un nombre premier\n", getpid(),data->workerNumber, data->numberToCompute, data->workerNumber);
+            if(data->numberToCompute == data->workerNumber) {
+                // TRACE("%d - Worker %d : %d est égal à %d, c'est un nombre premier\n", getpid(),data->workerNumber, data->numberToCompute, data->workerNumber);
+                
                 isPrime = true;
                 ret = write(data->fdToMaster, &isPrime, sizeof(bool));
-                myassert(ret == sizeof(bool), "Worker: erreur lors de l'envoi au master de l'information que le nombre est premier.");
+                myassert(ret == sizeof(char), "Worker: erreur lors de l'envoi au master de l'information que le nombre est premier.");
+            }
+            else if(data->numberToCompute % data->workerNumber == 0) {
+                // TRACE("%d - Worker %d : %d est divisible par %d, ce n'est pas un nombre premier\n",getpid(), data->workerNumber, data->numberToCompute, data->workerNumber);
+                
+                isPrime = false;
+                ret = write(data->fdToMaster, &isPrime, sizeof(bool));
+                myassert(ret == sizeof(char), "Worker: erreur lors de l'envoi au master de l'information que le nombre n'est pas premier.");
             }
             else {
                 if(!data->hasChild) {
-                    printf("%d , Worker %d : Creation d\'un nouveau worker no %d\n", getpid(), data->workerNumber, data->workerNumber + 1);
+                    // TRACE("%d - Worker %d : Creation d\'un nouveau worker no %d\n", getpid(), data->workerNumber, data->numberToCompute);
                     /*
                         creation du nouveau worker
                         la transmission à ce nouveau worker se fait en dehors de ce if
@@ -135,56 +139,51 @@ void loop(workerData *data)
                     if (pid_child != 0) {
                         close(fd_ToNext[0]);
 
+                        data->fd_Next = fd_ToNext[1];
+
                         data->hasChild = true;
-                        printf("%d : has child %d\n",getpid(),(int) data->hasChild);
                         
-                        printf("%d : Pere PID est %d\n", getpid(),getpid()); 
+                        // TRACE("%d - Pere PID est %d\n", getpid(),getpid());
+                        // TRACE("%d - has child %d\n",getpid(),(int) data->hasChild);
+                        
 
                     } else {
-
-                        printf("%d : has child %d\n",getpid(),(int) data->hasChild);
-            
-                        
-                        printf("%d : Je suis le worker %d\n",getpid(),data->workerNumber);
 
                         close(fd_ToNext[1]);
 
                         data->fd_Next = fd_ToNext[0];
-                        printf("%d : Fils PID est %d\n",getpid(),getpid()); 
+
+                        data->workerNumber = data->numberToCompute;
+
+                        // TRACE("%d - Fils PID est %d\n",getpid(),getpid()); 
+                        // TRACE("%d - has child %d\n",getpid(),(int) data->hasChild);
+                        // TRACE("%d - Je suis le worker %d\n",getpid(),data->workerNumber);
+
 
                         char str_fd_toNext[20]; // faudrait faire un malloc
                         char str_fd_toMaster[20];
+                        char str_number[20];
 
                         sprintf(str_fd_toNext,"%d",data->fd_Next);
                         sprintf(str_fd_toMaster,"%d",data->fdToMaster);
+                        sprintf(str_number, "%d", data->numberToCompute);
 
-                        ret = read(data->fdIn, &data->numberToCompute, sizeof(int));
-                        myassert(ret == sizeof(int), "Worker: erreur lors de la reception du nombre à tester au worker suivant.");
 
-                        execl("./worker", "./worker", data->numberToCompute, str_fd_toNext, str_fd_toMaster, NULL);
+                        //ret = read(data->fdIn, &data->numberToCompute, sizeof(int));
+                        //myassert(ret == sizeof(int), "Worker: erreur lors de la reception du nombre à tester au worker suivant.");
+
+                        execl("./worker", "./worker", str_number, str_fd_toNext, str_fd_toMaster, NULL);
                         EXIT_FAILURE;
                     }
                                    
+                } else {
+                    // Si l'enfant existait DÉJÀ, on lui passe le nombre
+                    
+                    // TRACE("%d Worker %d - Transmission de %d au worker suivant.\n",getpid(), data->workerNumber, data->numberToCompute);
+
+                    ret = write(data->fd_Next, &data->numberToCompute, sizeof(int));
+                    myassert(ret == sizeof(int), "Worker: erreur transmission au suivant");
                 }
-                
-                printf("%d Worker %d : Transmission de %d au worker suivant.\n",getpid(), data->workerNumber, data->numberToCompute);
-                /*
-                    TODO : partie communication au worker N+1
-                */
-               
-                ret = write(data->fd_Next, &data->numberToCompute, sizeof(int));
-                //ERREUR - A CORRIGER
-                //Partie fork pose probleme
-                myassert(ret == sizeof(int), "Worker: erreur lors de la transmission du nombre à tester au worker suivant.");
-                //printf("Worker %d : Transmission de %d au worker suivant.\n", data->workerNumber, data->numberToCompute);
-                /*
-                    TODO : partie communication au worker N+1
-                *
-                ret = write(data->fd_Next[1], &data->numberToCompute, sizeof(int));
-                //ERREUR - A CORRIGER
-                //Partie fork pose probleme
-                myassert(ret == sizeof(int), "Worker: erreur lors de la transmission du nombre à tester au worker suivant.");
-                */
             }
         }
     }
@@ -205,22 +204,32 @@ int main(int argc, char * argv[])
     // que le nombre testé est bien premier
 
     bool isPrime = true;
-    printf("%d , Je viens d'être créer, donc %d est premier\n",getpid(), data->numberToCompute);
+    data->hasChild = false;
     data->workerNumber = data->numberToCompute;
-    printf("%d , worker %d : number %d\n",getpid(),data->workerNumber,data->numberToCompute);
+
+    // TRACE("%d - Je viens d'être créer, donc %d est premier\n",getpid(), data->numberToCompute);
+    TRACE("        %d - Worker %d : number %d\n",getpid(),data->workerNumber,data->numberToCompute);
+
     int ret = write(data->fdToMaster, &isPrime, sizeof(bool));
     myassert(ret == sizeof(bool), "Worker: erreur lors de l'envoi au master de l'information que le nombre est premier.");
 
-    printf("%d , Le boolean vient d'etre envoyé, %d est premier\n",getpid(), data->numberToCompute);
+    // TRACE("%d - Le boolean vient d'etre envoyé, %d est premier\n",getpid(), data->numberToCompute);
+
 
     loop(data);
 
 
     // libérer les ressources : fermeture des files descriptors par exemple
-    close(data->fdIn);
-    close(data->fdToMaster);
+    if (data->fdIn != -1) close(data->fdIn);
+    if (data->fdToMaster != -1) close(data->fdToMaster);
+
+    if (data->hasChild && data->fd_Next != -1) {
+        close(data->fd_Next);
+    }
 
     free(data);
+
+    TRACE("Worker %d (PID %d) termine proprement.\n", data->workerNumber, getpid());
 
     return EXIT_SUCCESS;
 }

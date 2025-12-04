@@ -187,11 +187,11 @@ int main(int argc, char * argv[])
 
         mc_fd = open(TUBE_MC, O_RDONLY);
         myassert(mc_fd != -1, "ouverture du tube master -> client en lecture a échoué");
-        printf("ouverture master -> client lecture ok\n");
+        //TRACE("ouverture master -> client lecture ok\n");
 
         cm_fd = open(TUBE_CM, O_WRONLY);
         myassert(cm_fd != -1, "ouverture du tube client -> master en écriture a échoué");
-        printf("ouverture client -> master ecriture ok\n");
+        // TRACE("ouverture client -> master ecriture ok\n");
 
         // Communication entre Client et Master (Matteo)
         whichOrder(order, number, mc_fd, cm_fd);
@@ -202,11 +202,11 @@ int main(int argc, char * argv[])
         // fermeture des tubes nommés
         ret = close(mc_fd);
         myassert(ret == 0, "fermeture du tube master -> client a échoué");
-        printf("fermeture master -> client ok\n");
+        // TRACE("fermeture master -> client ok\n");
 
         ret = close(cm_fd);
         myassert(ret == 0, "fermeture du tube client -> master a échoué");
-        printf("fermeture client -> master ok\n");
+        // TRACE("fermeture client -> master ok\n");
 
         // TODO : libérer le master gràce au deuxième sémaphore
         sem_edit(sem_mc_states, +1, SEM_MASTER);

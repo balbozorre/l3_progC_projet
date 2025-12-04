@@ -15,6 +15,39 @@ donc les deux auront l'include necessaire aux semaphore / tubes
 #include "master_client.h"
 #include "master_worker.h"
 
+
+#include "signal.h" // Nécessaire pour signal() et SIGINT
+
+/* * Variable globale pour stocker l'ID du sémaphore.
+ * Nécessaire car le gestionnaire de signal (handler) ne reçoit pas d'arguments
+ * et ne voit pas les variables locales du main.
+ */
+int global_sem_id = -1;
+
+/*
+ * Gestionnaire de signal pour l'arrêt d'urgence (Ctrl+C).
+ * Garantit que les ressources IPC (sémaphores) et fichiers (tubes nommés)
+ * sont détruits proprement avant de quitter.
+ */
+void clean_exit(int signum) {
+    fprintf(stderr, "\n[INTERRUPTION] Signal %d reçu (Ctrl+C). Nettoyage en cours...\n", signum);
+    if (global_sem_id != -1) {
+        // Suppression du tableau de sémaphores
+        if (semctl(global_sem_id, 0, IPC_RMID) == -1) {
+            perror("Erreur suppression sémaphore dans le handler");
+        } else {
+            fprintf(stderr, "-> Sémaphores supprimés.\n");
+        }
+    }
+    // Suppression des tubes nommés
+    unlink(TUBE_MC);
+    unlink(TUBE_CM);
+    fprintf(stderr, "-> Tubes nommés supprimés.\n");
+    
+    exit(EXIT_FAILURE);
+}
+
+
 /************************************************************************
  * Données persistantes d'un master
  ************************************************************************/
@@ -63,31 +96,47 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaste
     }
     else if (order == ORDER_COMPUTE_PRIME) {
         int number;
-        bool isprime;
 
         ret = read(cm_fd, &number, sizeof(int));
         myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
         
         // TODO : pipeline workers
-        for (int i = data->highest+1; i <= number; i++) {
-            printf("i: %d       highest: %d\n",i,data->highest);
+        for (int i = data->highest; i <= number; i++) {
+            bool isprime;
+            // TRACE("i: %d    highest: %d    max: %d\n",i,data->highest,number);
+
             ret = write(fd_toWorker, &i, sizeof(int));
             myassert(ret == sizeof(int), "écriture du nombre à tester dans le tube master -> worker a échoué");
 
-            printf("Worker a recu %d comme nombre\n",i);
+            // TRACE("Les worker ont recu %d comme nombre\n",i);
 
             ret = read(fd_toMaster, &isprime, sizeof(bool));  // Reponse du worker
             myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
             
+            // TRACE("                                                            %c isPrime\n",isprime);
             if (isprime) {
                 data->count += 1;
                 data->highest = i;
-                printf("%d premier\n",i);
-            } else {printf("%d non premier\n",i);}
+                TRACE("                                                            %d premier\n",i);
+            } else if(!isprime){
+                TRACE("                                                            %d non premier\n",i);
+            }
+            else {
+                // TRACE("Le retour du worker a planté\n");
+            }
         }
+
+        bool isprime;
+        ret = write(fd_toWorker, &number, sizeof(int));
+        myassert(ret == sizeof(int), "écriture du nombre à tester dans le tube master -> worker a échoué");
+
+        ret = read(fd_toMaster, &isprime, sizeof(bool));  // Reponse du worker
+        myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
+        
+
         ret = write(mc_fd, &isprime, sizeof(bool));
         myassert(ret == sizeof(bool), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
-        //printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+        printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
     }
     else if (order == ORDER_HOW_MANY_PRIME) {
         int count = 13;  // Valeur arbitraire tant les workers n'ont pas été fait
@@ -159,11 +208,11 @@ void loop(int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaster, int sem_mc_sta
         // Ouverture des tubes entre Master et Client
         mc_fd = open(TUBE_MC, O_WRONLY);
         myassert(mc_fd != -1, "ouverture du tube master -> client en écriture a échoué");
-        printf("ouverture master -> client ecriture ok\n");
+        // TRACE("ouverture master -> client ecriture ok\n");
 
         cm_fd = open(TUBE_CM, O_RDONLY);
         myassert(cm_fd != -1, "ouverture du tube client -> master en lecture a échoué");
-        printf("ouverture client -> master lecture ok\n");
+        // TRACE("ouverture client -> master lecture ok\n");
 
         // Lecture de l'ordre envoyé par Client
         ret = read(cm_fd, &order, sizeof(int));
@@ -177,11 +226,11 @@ void loop(int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaster, int sem_mc_sta
         // destruction des tubes nommés, des sémaphores, ...
         ret = close(mc_fd);
         myassert(ret == 0, "fermeture du tube master -> client a échoué");
-        printf("fermeture master -> client ok\n");
+        // TRACE("fermeture master -> client ok\n");
 
         ret = close(cm_fd);
         myassert(ret == 0, "fermeture du tube client -> master a échoué");
-        printf("fermeture client -> master ok\n");
+        // TRACE("fermeture client -> master ok\n");
 
 
         // TODO :
@@ -199,6 +248,12 @@ void loop(int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaster, int sem_mc_sta
 
 int main(int argc, char * argv[])
 {
+    /* * Installation du gestionnaire pour le signal SIGINT (Ctrl+C).
+     * Si l'utilisateur interrompt le programme, 'clean_exit' sera exécutée.
+     */
+    signal(SIGINT, clean_exit);
+
+
     if (argc != 1) {
         usage(argv[0], NULL);
     }
@@ -224,8 +279,12 @@ int main(int argc, char * argv[])
     */
     key_t key = ftok(FILENAME, MASTER_CLIENT);
     myassert(key != -1, "Erreur dans ftok(), la clé est incorrecte");
-    int sem_mc_states = semget(key, 2, IPC_CREAT|IPC_EXCL|0641);
+
+    int sem_mc_states = semget(key, 2, IPC_CREAT|0641);
     myassert(sem_mc_states != -1, "Echec de la création des sémaphores client <-> master");
+
+    // On sauvegarde l'ID dans la variable globale pour que le handler puisse le supprimer
+    global_sem_id = sem_mc_states;
 
     //initialisation des semaphores
     ret = semctl(sem_mc_states, SEM_CLIENT, SETVAL, 1);
@@ -277,11 +336,11 @@ int main(int argc, char * argv[])
     loop(mc_fd, cm_fd, fd_toWorker[1], fd_toMaster[0], sem_mc_states, data);
 
     //destruction des sémaphore entre le master et les clients
-    printf("Destruction des semaphores\n");
+    // TRACE("Destruction des semaphores\n");
     ret = semctl(sem_mc_states, -1, IPC_RMID);
     myassert(ret != -1, "Erreur lors de la destruction des semaphores client <-> master");
 
-    printf("Suppression des tubes nommés\n");
+    // TRACE("Suppression des tubes nommés\n");
     ret = unlink(TUBE_MC);
     myassert(ret == 0, "suppression du tube master -> client a échoué");
     ret = unlink(TUBE_CM);
