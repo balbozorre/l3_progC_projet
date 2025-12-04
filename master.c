@@ -69,9 +69,12 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaste
         myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
         
         // TODO : pipeline workers
-        for (int i = data->highest; i <= number; i++) {
+        for (int i = data->highest+1; i <= number; i++) {
+            printf("i: %d       highest: %d\n",i,data->highest);
             ret = write(fd_toWorker, &i, sizeof(int));
             myassert(ret == sizeof(int), "écriture du nombre à tester dans le tube master -> worker a échoué");
+
+            printf("Worker a recu %d comme nombre\n",i);
 
             ret = read(fd_toMaster, &isprime, sizeof(bool));  // Reponse du worker
             myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
@@ -79,7 +82,8 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaste
             if (isprime) {
                 data->count += 1;
                 data->highest = i;
-            }
+                printf("%d premier\n",i);
+            } else {printf("%d non premier\n",i);}
         }
         ret = write(mc_fd, &isprime, sizeof(bool));
         myassert(ret == sizeof(bool), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
@@ -253,7 +257,7 @@ int main(int argc, char * argv[])
         close(fd_toWorker[1]);
         close(fd_toMaster[0]);
 
-        char str_fd_toWorker[20]; // faudrait faire un malloc poure ke sa soi plu zoli
+        char str_fd_toWorker[20]; // faudrait faire un malloc
         char str_fd_toMaster[20]; // faudrait faire un malloc
 
         sprintf(str_fd_toWorker,"%d",fd_toWorker[0]);
@@ -263,6 +267,9 @@ int main(int argc, char * argv[])
         EXIT_FAILURE;
     }
     
+
+    data->count += 1;
+    data->highest = 2;
 
     // boucle infinie
     //mise à 0 du sémaphore du master pour qu'il se bloque en fin de tour de boucle
