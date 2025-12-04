@@ -226,10 +226,11 @@ int main(int argc, char * argv[])
     if (data->hasChild && data->fd_Next != -1) {
         close(data->fd_Next);
     }
+    
+    TRACE("Worker %d (PID %d) termine proprement.\n", data->workerNumber, getpid());
 
     free(data);
 
-    TRACE("Worker %d (PID %d) termine proprement.\n", data->workerNumber, getpid());
 
     return EXIT_SUCCESS;
 }

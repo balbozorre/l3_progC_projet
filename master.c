@@ -115,8 +115,10 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaste
             
             // TRACE("                                                            %c isPrime\n",isprime);
             if (isprime) {
+                if(i == 2) data->count = 0;
                 data->count += 1;
                 data->highest = i;
+                // TRACE("i: %d    highest: %d    count: %d\n",i,data->highest,data->count);
                 TRACE("                                                            %d premier\n",i);
             } else if(!isprime){
                 TRACE("                                                            %d non premier\n",i);
@@ -139,15 +141,11 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaste
         printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
     }
     else if (order == ORDER_HOW_MANY_PRIME) {
-        int count = 13;  // Valeur arbitraire tant les workers n'ont pas été fait
-
-        ret = write(mc_fd, &count, sizeof(int));
+        ret = write(mc_fd, &data->count, sizeof(int));
         myassert(ret == sizeof(int), "écriture du nombre de nombre premier connu dans le tube master -> client a échoué");
     }
     else if (order == ORDER_HIGHEST_PRIME) {
-        int highest = 1637;  // Valeur arbitraire tant les workers n'ont pas été fait
-                
-        ret = write(mc_fd, &highest, sizeof(int));
+        ret = write(mc_fd, &data->highest, sizeof(int));
         myassert(ret == sizeof(int), "écriture du plus grand nombre premier connu dans le tube master -> client a échoué");
     }
     return running;
@@ -327,7 +325,7 @@ int main(int argc, char * argv[])
     }
     
 
-    data->count += 1;
+    data->count = 1;
     data->highest = 2;
 
     // boucle infinie
