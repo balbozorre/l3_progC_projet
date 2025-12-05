@@ -144,7 +144,7 @@ void *threadProcess(void *args) {
     pthread_mutex_lock(thread_args->tmutex);
 
     FILE *logs = fopen("local_compute_logs.txt", "a");
-    printf("%ld>> Thread created with number %d\n", pthread_self(), N);
+    printf("%ld>> Thread crée, N= %d\n", pthread_self(), N);
 
     for(int i=2; i * N <= tab_size + 1; i++) {
         int value = i*N;
