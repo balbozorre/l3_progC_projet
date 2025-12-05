@@ -31,6 +31,7 @@ int global_sem_id = -1;
  */
 void clean_exit(int signum) {
     fprintf(stderr, "\n[INTERRUPTION] Signal %d reçu (Ctrl+C). Nettoyage en cours...\n", signum);
+
     if (global_sem_id != -1) {
         // Suppression du tableau de sémaphores
         if (semctl(global_sem_id, 0, IPC_RMID) == -1) {
@@ -83,71 +84,68 @@ bool whichOrder(int order, int mc_fd, int cm_fd, int fd_toWorker, int fd_toMaste
     if (order == ORDER_STOP) {
         bool ack = true;
 
-        // TODO : envoyer ordre de fin au premier worker et attendre sa fin
-        // envoyer un accusé de réception au client
+        // envoie de l'ordre de fin au premier worker et attendre sa fin
         ret = write(fd_toWorker, &order, sizeof(int));
         myassert(ret == sizeof(int), "écriture de l'ordre \"stop\" dans le tube master -> worker a échoué");
 
-        // Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
+        ret = wait(NULL);
+        myassert(ret >= 0, "Master: erreur lors de l'attente de la fin du premier worker");
+
+        /* * Une fois le premier worker terminé (celui ci se termine seulement quand les workers suivant sont terminé)
+        * Un accusé de réception est envoyé au client
+        */
         ret = write(mc_fd, &ack, sizeof(bool));
         myassert(ret == sizeof(bool), "écriture de l'accusé de reception d'arrêt du master dans le tube master -> client a échoué");
-        
+
         running = false;
     }
     else if (order == ORDER_COMPUTE_PRIME) {
         int number;
+        bool isprime;
 
         ret = read(cm_fd, &number, sizeof(int));
         myassert(ret == sizeof(int), "lecture du nombre a calculer dans le tube client -> master a échoué");
         
-        // TODO : pipeline workers
-        for (int i = data->highest; i <= number; i++) {
-            bool isprime;
-            // TRACE("i: %d    highest: %d    max: %d\n",i,data->highest,number);
+        int old_highest = data->highest;
+
+        // Création de la pipeline des workers
+        for (int i = old_highest + 1; i <= number; i++) {
 
             ret = write(fd_toWorker, &i, sizeof(int));
             myassert(ret == sizeof(int), "écriture du nombre à tester dans le tube master -> worker a échoué");
-
-            // TRACE("Les worker ont recu %d comme nombre\n",i);
 
             ret = read(fd_toMaster, &isprime, sizeof(bool));  // Reponse du worker
             myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
             
             // TRACE("                                                            %c isPrime\n",isprime);
             if (isprime) {
-                data->count += 1;
+                data->count ++;
                 data->highest = i;
-                TRACE("                                                            %d premier\n",i);
-            } else if(!isprime){
-                TRACE("                                                            %d non premier\n",i);
-            }
-            else {
-                // TRACE("Le retour du worker a planté\n");
+                // TRACE("                                                            %d premier\n",i);
             }
         }
 
-        bool isprime;
-        ret = write(fd_toWorker, &number, sizeof(int));
-        myassert(ret == sizeof(int), "écriture du nombre à tester dans le tube master -> worker a échoué");
+        if (number <= old_highest) {
+            // Le nombre était déjà connu avant, il faut le redemander au pipeline
+            ret = write(fd_toWorker, &number, sizeof(int));
+            myassert(ret == sizeof(int), "l'envoie d'un nombre plus petit que le plus grand connu a échoué");
 
-        ret = read(fd_toMaster, &isprime, sizeof(bool));  // Reponse du worker
-        myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier dans le tube worker -> master a échoué");
-        
+            ret = read(fd_toMaster, &isprime, sizeof(bool));
+            myassert(ret == sizeof(bool), "lecture de la réponse si un nombre est premier de worker a échoué");
+        }
 
+        // Envoi réponse au client
         ret = write(mc_fd, &isprime, sizeof(bool));
-        myassert(ret == sizeof(bool), "écriture de la réponse si un nombre est premier dans le tube master -> client a échoué");
-        printf("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+        myassert(ret == sizeof(bool), "l'envoie au client du résultat si un nombre est premier a échoué");
+        TRACE("Le nombre %d %s premier\n", number, (isprime ? "est" : "n'est pas"));
+
     }
     else if (order == ORDER_HOW_MANY_PRIME) {
-        int count = 13;  // Valeur arbitraire tant les workers n'ont pas été fait
-
-        ret = write(mc_fd, &count, sizeof(int));
+        ret = write(mc_fd, &data->count, sizeof(int));
         myassert(ret == sizeof(int), "écriture du nombre de nombre premier connu dans le tube master -> client a échoué");
     }
     else if (order == ORDER_HIGHEST_PRIME) {
-        int highest = 1637;  // Valeur arbitraire tant les workers n'ont pas été fait
-                
-        ret = write(mc_fd, &highest, sizeof(int));
+        ret = write(mc_fd, &data->highest, sizeof(int));
         myassert(ret == sizeof(int), "écriture du plus grand nombre premier connu dans le tube master -> client a échoué");
     }
     return running;
@@ -269,6 +267,8 @@ int main(int argc, char * argv[])
     pid_t pid_child;
 
     masterData *data = (masterData *) malloc(sizeof(masterData));
+    data->count = 0; // INDISPENSABLE !
+    data->highest = 2;
 
     // - création des sémaphores
     /*
@@ -328,7 +328,6 @@ int main(int argc, char * argv[])
     
 
     data->count += 1;
-    data->highest = 2;
 
     // boucle infinie
     //mise à 0 du sémaphore du master pour qu'il se bloque en fin de tour de boucle
