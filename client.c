@@ -124,6 +124,84 @@ void whichOrder(int order, int number, int mc_fd, int cm_fd){
     }
 }
 
+//on s'assure de garder le tableau tout en libérant la mémoire de la structure
+void freeThreadStruct(thread_args_t *data) {
+    free(data);
+}
+
+/*
+    prend en argument une structure contenant le nombre du thread,
+    le pointeur vers le tableau et le semaphore pour la section critique
+    retourne un pointeur null
+*/
+void *threadProcess(void *args) {
+    myassert(args != NULL, "erreur lors du passage du pointeur de la structure au thread");
+    thread_args_t *thread_args = (thread_args_t *) args;
+    int tab_size = thread_args->tab_size;
+    sem_edit(thread_args->sem_SC_thread, -1, 0);
+
+    printf("%ld>> Thread created with number %d\n", pthread_self(), thread_args->thread_nbr);
+    for(int i=2; i * thread_args->thread_nbr < tab_size; i++) {
+        printf("%ld>>i * thread_args->thread_nbr = %d\n", pthread_self(), i * thread_args->thread_nbr);
+        thread_args->prime_tab[i * thread_args->thread_nbr] = false;
+    }
+
+    sem_edit(thread_args->sem_SC_thread, +1, 0);
+    freeThreadStruct(thread_args);
+    return NULL;
+}
+
+void computePrimeLocal(int number_to_compute) {
+    int nb_thread = (int) floor(sqrt(number_to_compute));
+    int tab_size = number_to_compute - 1;
+    int err;
+    int offset = 2;
+
+    //création d'un tableau de taille N-1 car on commence à 2
+    //exemple : N = 5 -> 2,3,4,5
+    bool *primeTab = (bool *) malloc(sizeof(bool) * (tab_size));
+    myassert(primeTab != NULL, "Erreur lors de la création du tableau pour calcul par thread.");
+
+    for(int i=0; i<tab_size; i++) {
+        primeTab[i] = true;
+    }
+
+    pthread_t pthread_list[nb_thread];
+
+    key_t tkey = ftok(FILETHREAD, THREAD);
+    myassert(tkey != -1, "clé incorrecte pour le semaphore des thread");
+    int sem_SC_thread = semget(tkey, 1, IPC_CREAT|0641);
+    myassert(sem_SC_thread != -1, "Echec de la créattion du semaphore pour les thread");
+    err = semctl(sem_SC_thread, 0, SETVAL, 1);
+    myassert(err != -1, "erreur lors de l'initialisation du semaphore des thread");
+
+    //création des threads
+    for(int i=0; i<nb_thread; i++) {
+        thread_args_t *args = malloc(sizeof(thread_args_t));
+        args->prime_tab = primeTab;
+        args->tab_size = tab_size;
+        args->sem_SC_thread = sem_SC_thread;
+        args->thread_nbr = i + offset;
+
+        err = pthread_create(&(pthread_list[i]), NULL, threadProcess, args);
+        myassert(err == 0, "Erreur lors de la création d'un thread");
+    }
+
+    //attente de la fin des thread
+    for(int i=0; i<nb_thread; i++) {
+        err = pthread_join(pthread_list[i], NULL);
+        myassert(err == 0, "Erreur lors de l'attente d'un thread");
+    }
+
+    ///affichage du tableau
+    for(int i=0; i<tab_size; i++) {
+        printf("%d %s", i+offset, (primeTab[i])?"est premier\n":"n'est pas premier\n");
+    }
+    
+    //la structure en elle meme est libérée par les thread
+    free(primeTab);
+}
+
 
 
 /************************************************************************
@@ -171,8 +249,7 @@ int main(int argc, char * argv[])
 
     if (order == ORDER_COMPUTE_PRIME_LOCAL) {
         // TODO : 3.3 client (bis) -> code pour calculer les nombres premiers en local
-
-        printf("Actuellement indisponible.\n");
+        computePrimeLocal(number);
 
     } else {
         // code pour communiquer avec le master

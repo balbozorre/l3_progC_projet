@@ -14,10 +14,23 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <math.h>
 
-// (loic) valeurs necessaire à ftok()
+typedef struct
+{
+    int thread_nbr;
+    int sem_SC_thread;
+
+    bool *prime_tab;
+    int tab_size;
+} thread_args_t;
+
+// valeurs necessaire à ftok()
 #define FILENAME "Makefile"
+#define FILETHREAD "README"
 #define MASTER_CLIENT 27
+#define THREAD 40
 //valeur masquant les position des semaphore master <-> client
 #define SEM_CLIENT 0
 #define SEM_MASTER 1
