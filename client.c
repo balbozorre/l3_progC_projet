@@ -151,7 +151,7 @@ void *threadProcess(void *args) {
         int value = i*N;
         int index = value - 2;
 
-        fprintf(logs, "%ld>>%d * %d = %d (index : %d)\n", pthread_self(), i, N, value, index);
+        fprintf(logs, "%ld>>%d * %d = %d (index : %d)\n", (unsigned long)pthread_self(), i, N, value, index);
         thread_args->prime_tab[index] = false;
     }
 
