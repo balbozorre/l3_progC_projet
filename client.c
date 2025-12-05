@@ -131,8 +131,10 @@ void freeThreadStruct(thread_args_t *data) {
 
 /*
     prend en argument une structure contenant le nombre du thread,
-    le pointeur vers le tableau et le semaphore pour la section critique
+    le pointeur vers le tableau et le mutex pour la section critique
     retourne un pointeur null
+    entre en section critique, modifie chaque case contenant un multiple de N
+    puis sort de la section critique.
 */
 void *threadProcess(void *args) {
     myassert(args != NULL, "erreur lors du passage du pointeur de la structure au thread");
@@ -161,6 +163,10 @@ void *threadProcess(void *args) {
     return NULL;
 }
 
+/*
+    fonction affichant un fichier déjà ouvert
+    sert uniquement pour l'affichage des resultat de compute local
+*/
 void displayFile(FILE *file) {
     myassert(file != NULL, "le fichier a lire vaut NULL");
     int buff_size = 256;
