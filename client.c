@@ -138,68 +138,79 @@ void *threadProcess(void *args) {
     myassert(args != NULL, "erreur lors du passage du pointeur de la structure au thread");
     thread_args_t *thread_args = (thread_args_t *) args;
     int tab_size = thread_args->tab_size;
-    sem_edit(thread_args->sem_SC_thread, -1, 0);
+    int N = thread_args->thread_nbr;
+    
+    //section critique
+    pthread_mutex_lock(thread_args->tmutex);
 
-    printf("%ld>> Thread created with number %d\n", pthread_self(), thread_args->thread_nbr);
-    for(int i=2; i * thread_args->thread_nbr < tab_size; i++) {
-        printf("%ld>>i * thread_args->thread_nbr = %d\n", pthread_self(), i * thread_args->thread_nbr);
-        thread_args->prime_tab[i * thread_args->thread_nbr] = false;
+    FILE *logs = fopen("local_compute_logs.txt", "a");
+    printf("%ld>> Thread created with number %d\n", pthread_self(), N);
+
+    for(int i=2; i * N <= tab_size + 1; i++) {
+        int value = i*N;
+        int index = value - 2;
+
+        fprintf(logs, "%ld>>%d * %d = %d (index : %d)\n", pthread_self(), i, N, value, index);
+        thread_args->prime_tab[index] = false;
     }
 
-    sem_edit(thread_args->sem_SC_thread, +1, 0);
+    fclose(logs);
+    pthread_mutex_unlock(thread_args->tmutex);
+    //fin de section critique
+
     freeThreadStruct(thread_args);
     return NULL;
 }
 
 void computePrimeLocal(int number_to_compute) {
-    int nb_thread = (int) floor(sqrt(number_to_compute));
-    int tab_size = number_to_compute - 1;
-    int err;
-    int offset = 2;
+    if(number_to_compute>2) {
+        int nb_thread = (int) floor(sqrt(number_to_compute));
+        int tab_size = number_to_compute - 1;
+        int err;
+        int offset = 2;
 
-    //création d'un tableau de taille N-1 car on commence à 2
-    //exemple : N = 5 -> 2,3,4,5
-    bool *primeTab = (bool *) malloc(sizeof(bool) * (tab_size));
-    myassert(primeTab != NULL, "Erreur lors de la création du tableau pour calcul par thread.");
+        //création d'un tableau de taille N-1 car on commence à 2
+        //exemple : N = 5 -> 2,3,4,5
+        bool *primeTab = (bool *) malloc(sizeof(bool) * (tab_size));
+        myassert(primeTab != NULL, "Erreur lors de la création du tableau pour calcul par thread.");
 
-    for(int i=0; i<tab_size; i++) {
-        primeTab[i] = true;
+        for(int i=0; i<tab_size; i++) {
+            primeTab[i] = true;
+        }
+
+        pthread_t pthread_list[nb_thread];
+
+        pthread_mutex_t tmutex;
+        err = pthread_mutex_init(&tmutex, NULL);
+        myassert(err == 0, "erreur à la creation du mutex pour les thread");
+
+        //création des threads
+        for(int i=0; i<nb_thread; i++) {
+            thread_args_t *args = malloc(sizeof(thread_args_t));
+            args->prime_tab = primeTab;
+            args->tab_size = tab_size;
+            args->tmutex = &tmutex;
+            args->thread_nbr = i + offset;
+
+            err = pthread_create(&(pthread_list[i]), NULL, threadProcess, args);
+            myassert(err == 0, "Erreur lors de la création d'un thread");
+        }
+
+        //attente de la fin des thread
+        for(int i=0; i<nb_thread; i++) {
+            err = pthread_join(pthread_list[i], NULL);
+            myassert(err == 0, "Erreur lors de l'attente d'un thread");
+        }
+
+        ///affichage du tableau
+        for(int i=0; i<tab_size; i++) {
+            printf("%d %s", i+offset, (primeTab[i])?"est premier\n":"n'est pas premier\n");
+        }
+        
+        //la structure en elle meme est libérée par les thread
+        free(primeTab);
+        pthread_mutex_destroy(&tmutex);
     }
-
-    pthread_t pthread_list[nb_thread];
-
-    key_t tkey = ftok(FILETHREAD, THREAD);
-    myassert(tkey != -1, "clé incorrecte pour le semaphore des thread");
-    int sem_SC_thread = semget(tkey, 1, IPC_CREAT|0641);
-    myassert(sem_SC_thread != -1, "Echec de la créattion du semaphore pour les thread");
-    err = semctl(sem_SC_thread, 0, SETVAL, 1);
-    myassert(err != -1, "erreur lors de l'initialisation du semaphore des thread");
-
-    //création des threads
-    for(int i=0; i<nb_thread; i++) {
-        thread_args_t *args = malloc(sizeof(thread_args_t));
-        args->prime_tab = primeTab;
-        args->tab_size = tab_size;
-        args->sem_SC_thread = sem_SC_thread;
-        args->thread_nbr = i + offset;
-
-        err = pthread_create(&(pthread_list[i]), NULL, threadProcess, args);
-        myassert(err == 0, "Erreur lors de la création d'un thread");
-    }
-
-    //attente de la fin des thread
-    for(int i=0; i<nb_thread; i++) {
-        err = pthread_join(pthread_list[i], NULL);
-        myassert(err == 0, "Erreur lors de l'attente d'un thread");
-    }
-
-    ///affichage du tableau
-    for(int i=0; i<tab_size; i++) {
-        printf("%d %s", i+offset, (primeTab[i])?"est premier\n":"n'est pas premier\n");
-    }
-    
-    //la structure en elle meme est libérée par les thread
-    free(primeTab);
 }
 
 

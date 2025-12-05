@@ -16,11 +16,12 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <math.h>
+#include <semaphore.h>
 
 typedef struct
 {
     int thread_nbr;
-    int sem_SC_thread;
+    pthread_mutex_t *tmutex;
 
     bool *prime_tab;
     int tab_size;
