@@ -143,8 +143,7 @@ void *threadProcess(void *args) {
     //section critique
     pthread_mutex_lock(thread_args->tmutex);
 
-    FILE *logs = fopen("local_compute_logs.txt", "a");
-    printf("%ld>> Thread crée, N= %d\n", pthread_self(), N);
+    FILE *logs = fopen(FILE_LOG, "w");
 
     for(int i=2; i * N <= tab_size + 1; i++) {
         int value = i*N;
@@ -160,6 +159,22 @@ void *threadProcess(void *args) {
 
     freeThreadStruct(thread_args);
     return NULL;
+}
+
+void displayFile(FILE *file) {
+    myassert(file != NULL, "le fichier a lire vaut NULL");
+    int buff_size = 256;
+    fseek(file, 0, SEEK_SET);
+
+    char * buffer = (char *) malloc( buff_size * sizeof(char) );
+    while(! feof(file)) {
+        fgets(buffer, buff_size, file);
+        if ( ferror( file ) ) {
+            break;
+        }
+        printf("%s", buffer);
+    }
+    free(buffer);
 }
 
 void computePrimeLocal(int number_to_compute) {
@@ -203,9 +218,19 @@ void computePrimeLocal(int number_to_compute) {
         }
 
         ///affichage du tableau
+        FILE *result = fopen(FILE_RESULT, "w+");
+        myassert(result != NULL, "Erreur lors de l'ouverture du fichier result");
         for(int i=0; i<tab_size; i++) {
-            printf("%d %s", i+offset, (primeTab[i])?"est premier\n":"n'est pas premier\n");
+            fprintf(result, "%d %s", i+offset, (primeTab[i])?"est premier\n":"n'est pas premier\n");
         }
+        fflush(result);
+        printf("Voulez-vous afficher le contenu du fichier resultat ? (y/n) :");
+        char answer;
+        fscanf(stdin, " %c", &answer);
+        if(answer == 'y' || answer == 'Y') {
+            displayFile(result);
+        }
+        fclose(result);
         
         //la structure en elle meme est libérée par les thread
         free(primeTab);

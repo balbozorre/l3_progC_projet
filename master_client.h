@@ -29,9 +29,7 @@ typedef struct
 
 // valeurs necessaire à ftok()
 #define FILENAME "Makefile"
-#define FILETHREAD "README"
 #define MASTER_CLIENT 27
-#define THREAD 40
 //valeur masquant les position des semaphore master <-> client
 #define SEM_CLIENT 0
 #define SEM_MASTER 1
@@ -39,6 +37,10 @@ typedef struct
 //valeurs pour les tubes
 #define TUBE_MC "master_client"
 #define TUBE_CM "client_master"
+
+//fichiers de log et de resultat pour compute local
+#define FILE_RESULT "local_compute_result.txt"
+#define FILE_LOG "local_compute_logs.txt"
 
 // ordres possibles pour le master
 #define ORDER_NONE                0
