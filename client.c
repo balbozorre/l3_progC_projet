@@ -145,7 +145,7 @@ void *threadProcess(void *args) {
     //section critique
     pthread_mutex_lock(thread_args->tmutex);
 
-    FILE *logs = fopen(FILE_LOG, "w");
+    FILE *logs = fopen(FILE_LOG, "a");
 
     for(int i=2; i * N <= tab_size + 1; i++) {
         int value = i*N;
